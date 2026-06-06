@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react';
-import { Image, Upload, X, Search, FileText, Check, Eye, Trash2 } from 'lucide-react';
+import { Image, Upload, X, Search, FileText, Check, Eye, Trash2, Sparkles } from 'lucide-react';
 import MarkdownRender from './MarkdownRender';
 
 import { ASSET_CATEGORIES, PHASES } from '../data/projects';
 import { canUploadAssetCategory, getPhaseDescription, PHASE_CONFIG } from '../lib/phaseGuard';
+import { uiText } from '../lib/uiLanguage';
 
-export default function AssetLibrary({ projects, onAssetsChange }) {
+export default function AssetLibrary({ projects, onAssetsChange, uiLanguage }) {
   const [projectFilter, setProjectFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [previewAsset, setPreviewAsset] = useState(null);
@@ -28,6 +29,20 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
     const matchCat = categoryFilter === 'all' || a.category === categoryFilter;
     return matchProject && matchCat;
   });
+  const selectedProject = projects.find((p) => p.id === projectFilter);
+  const selectedProjectAssetCount = selectedProject
+    ? Object.values(selectedProject.assets || {}).flat().length
+    : allAssets.length;
+  const hasFilter = projectFilter !== 'all' || categoryFilter !== 'all';
+  const emptyIsFiltered = filteredAssets.length === 0 && allAssets.length > 0 && hasFilter && selectedProjectAssetCount > 0;
+  const emptyIsProject = projectFilter !== 'all' && selectedProjectAssetCount === 0;
+  const copy = uiText('assetLibrary', uiLanguage);
+  const starterAssetTypes = copy.starterTypes;
+  const categoryName = (id, fallback = '') => copy.categoryNames?.[id] || fallback;
+  const categoryGlyph = (id, fallback = '') => copy.categoryGlyphs?.[id] || fallback || copy.fileGlyph;
+  const phaseName = (phase) => copy.phaseNames?.[phase] || PHASE_CONFIG[phase]?.name || copy.phaseLabel?.(phase) || `Phase ${phase}`;
+  const phaseDescription = (phase) => copy.phaseDescriptions?.[phase] || getPhaseDescription(phase);
+  const listJoiner = uiLanguage === 'en' ? ', ' : '、';
 
   const handleFiles = (files) => {
     const targetProject = projects.find((p) => p.id === (projectFilter !== 'all' ? projectFilter : projects[0]?.id));
@@ -62,7 +77,9 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
     });
 
     if (rejected.length > 0) {
-      alert(`当前处于「${PHASE_CONFIG[phase]?.name}」阶段，以下类别不允许上传：\n${rejected.map((r) => `- ${r.name} (${r.category})`).join('\n')}\n\n本阶段允许：${allowedCats.join('、')}`);
+      const rejectedLines = rejected.map((r) => `- ${r.name} (${categoryName(r.category, r.category)})`).join('\n');
+      const allowedList = allowedCats.map((id) => categoryName(id, id)).join(listJoiner);
+      alert(copy.uploadRejected(phaseName(phase), rejectedLines, allowedList));
     }
 
     if (newAssets.length === 0) return;
@@ -99,8 +116,8 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
             <Image className="w-4 h-4 text-gdpro-accent" strokeWidth={1.5} />
-            <h2 className="text-[15px] font-semibold text-gdpro-text tracking-tight">资产库</h2>
-            <span className="text-[11px] text-gdpro-text-muted">所有项目的 design assets 与产出物</span>
+            <h2 className="text-[15px] font-semibold text-gdpro-text tracking-tight">{copy.title}</h2>
+            <span className="text-[11px] text-gdpro-text-muted">{copy.subtitle}</span>
           </div>
           <div className="flex items-center gap-2">
             {projectFilter !== 'all' && (() => {
@@ -110,13 +127,13 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
               const cfg = PHASE_CONFIG[phase];
               return (
                 <span className="text-[10px] px-1.5 py-[1px] rounded bg-gdpro-accent/10 text-gdpro-accent font-medium">
-                  Phase {phase} · {cfg?.name}
+                  {copy.phaseBadge(phase, cfg?.name)}
                 </span>
               );
             })()}
             <button onClick={() => fileInputRef.current?.click()} className="gdpro-button text-[12px] flex items-center gap-1">
               <Upload className="w-3 h-3" strokeWidth={2.5} />
-              上传
+              {copy.upload}
             </button>
           </div>
           <input ref={fileInputRef} type="file" multiple className="hidden"
@@ -130,9 +147,9 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
           const cfg = PHASE_CONFIG[phase];
           return (
             <div className="mb-3 px-2.5 py-1.5 rounded-md bg-gdpro-bg-elevated/50 border border-gdpro-border/50 flex items-center gap-2">
-              <span className="text-[10px] text-gdpro-text-muted">本阶段允许上传：</span>
-              <span className="text-[10px] text-gdpro-accent font-medium">{cfg?.allowedAssetCategories.join('、')}</span>
-              <span className="text-[10px] text-gdpro-text-muted ml-auto">{getPhaseDescription(phase)}</span>
+              <span className="text-[10px] text-gdpro-text-muted">{copy.allowed}</span>
+              <span className="text-[10px] text-gdpro-accent font-medium">{cfg?.allowedAssetCategories.map((id) => categoryName(id, id)).join(uiLanguage === 'en' ? ', ' : '、')}</span>
+              <span className="text-[10px] text-gdpro-text-muted ml-auto">{phaseDescription(phase)}</span>
             </div>
           );
         })()}
@@ -144,7 +161,7 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
             onChange={(e) => setProjectFilter(e.target.value)}
             className="bg-gdpro-bg-surface border border-gdpro-border rounded-md px-2.5 py-[3px] text-[12px] text-gdpro-text focus:outline-none focus:border-gdpro-info min-w-[120px]"
           >
-            <option value="all">全部项目 ({allAssets.length})</option>
+            <option value="all">{copy.allProjects(allAssets.length)}</option>
             {projects.map((p) => {
               const count = allAssets.filter((a) => a.projectId === p.id).length;
               return <option key={p.id} value={p.id}>{p.name} ({count})</option>;
@@ -158,7 +175,7 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
               className={`px-2.5 py-[3px] rounded-md text-[11px] font-medium transition-colors ${
                 categoryFilter === 'all' ? 'bg-gdpro-info text-white' : 'bg-gdpro-bg-surface text-gdpro-text-secondary hover:text-gdpro-text'
               }`}>
-              全部
+              {copy.all}
             </button>
             {ASSET_CATEGORIES.map((cat) => {
               const count = allAssets.filter((a) => a.category === cat.id).length;
@@ -168,7 +185,7 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
                   className={`px-2.5 py-[3px] rounded-md text-[11px] font-medium transition-colors ${
                     categoryFilter === cat.id ? 'bg-gdpro-info text-white' : 'bg-gdpro-bg-surface text-gdpro-text-secondary hover:text-gdpro-text'
                   }`}>
-                  {cat.name} ({count})
+                  {categoryName(cat.id, cat.name)} ({count})
                 </button>
               );
             })}
@@ -179,7 +196,7 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
       {/* Documents */}
       {allDocs.length > 0 && (projectFilter === 'all' || allDocs.some((d) => d.projectId === projectFilter)) && (
         <div className="shrink-0 px-4 pt-3 pb-2 border-b border-gdpro-border">
-          <h3 className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider mb-1.5">项目文档</h3>
+          <h3 className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider mb-1.5">{copy.documents}</h3>
           <div className="flex gap-1.5 overflow-x-auto pb-1">
             {allDocs.filter((d) => projectFilter === 'all' || d.projectId === projectFilter).map((doc, i) => (
               <button key={`${doc.projectId}_${i}`} onClick={() => setPreviewDoc(doc)}
@@ -187,7 +204,7 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
                 <FileText className="w-3.5 h-3.5 text-gdpro-accent" strokeWidth={1.5} />
                 <div>
                   <div className="text-[12px] font-medium text-gdpro-text">{doc.title}</div>
-                  <div className="text-[10px] text-gdpro-text-muted">{doc.projectName} · Phase {doc.phase}</div>
+                  <div className="text-[10px] text-gdpro-text-muted">{doc.projectName} · {copy.phaseLabel(doc.phase)}</div>
                 </div>
               </button>
             ))}
@@ -198,10 +215,35 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
       {/* Asset grid */}
       <div className="flex-1 overflow-y-auto p-3">
         {filteredAssets.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center py-10">
-            <Image className="w-8 h-8 text-gdpro-text-muted mb-2" strokeWidth={1.5} />
-            <p className="text-[13px] text-gdpro-text-secondary">暂无资产</p>
-            <p className="text-[11px] text-gdpro-text-muted mt-0.5">上传文件或让 Agent 生成设计稿并采用</p>
+          <div className="h-full min-h-[360px] flex items-center justify-center py-10">
+            <div className="w-full max-w-[560px] rounded-xl border border-gdpro-border bg-white/82 px-8 py-7 text-center shadow-[0_20px_60px_rgba(24,35,48,0.08)]">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-gdpro-border bg-gdpro-bg-surface shadow-[0_1px_0_rgba(255,255,255,0.92)_inset]">
+                {emptyIsFiltered ? (
+                  <Search className="w-5 h-5 text-gdpro-text-muted" strokeWidth={1.7} />
+                ) : (
+                  <Sparkles className="w-5 h-5 text-gdpro-accent" strokeWidth={1.7} />
+                )}
+              </div>
+              <p className="text-[15px] font-semibold text-gdpro-text tracking-tight">
+                {emptyIsFiltered ? copy.emptyFiltered : emptyIsProject ? copy.emptyProject : copy.emptyDefault}
+              </p>
+              <p className="mx-auto mt-2 max-w-[420px] text-[12px] leading-5 text-gdpro-text-muted">
+                {emptyIsFiltered ? copy.emptyFilteredDetail : copy.emptyDefaultDetail}
+              </p>
+              {!emptyIsFiltered && (
+                <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+                  {starterAssetTypes.map((item) => (
+                    <span key={item} className="rounded-md border border-gdpro-border bg-gdpro-bg-surface px-2.5 py-1 text-[11px] font-medium text-gdpro-text-secondary">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <button onClick={() => fileInputRef.current?.click()} className="gdpro-button mt-5 inline-flex items-center gap-1.5 text-[12px]">
+                <Upload className="w-3.5 h-3.5" strokeWidth={2.2} />
+                {copy.importAssets}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
@@ -216,8 +258,20 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
                       <img src={asset.previewUrl} alt={asset.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center p-3">
-                        <div className="w-8 h-8 rounded-md flex items-center justify-center mb-1" style={{ backgroundColor: (catInfo?.color || '#FF9F0A') + '15' }}>
-                          <span className="text-[10px] font-mono font-bold" style={{ color: catInfo?.color || '#FF9F0A' }}>{asset.type?.toUpperCase() || 'FILE'}</span>
+                        <div className="w-[58%] max-w-[132px] aspect-[4/5] rounded-xl border border-gdpro-border bg-white shadow-[0_14px_32px_rgba(24,35,48,0.08)] overflow-hidden flex flex-col">
+                          <div className="h-7 shrink-0 border-b border-gdpro-border bg-gdpro-bg-surface/75 flex items-center gap-1.5 px-2">
+                            <span className="h-2 w-2 rounded-full bg-gdpro-danger/65" />
+                            <span className="h-2 w-2 rounded-full bg-gdpro-warning/65" />
+                            <span className="h-2 w-2 rounded-full bg-gdpro-success/65" />
+                          </div>
+                          <div className="flex flex-1 flex-col items-center justify-center gap-2">
+                            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: (catInfo?.color || '#FF9F0A') + '14' }}>
+                              <span className="text-[15px] font-semibold" style={{ color: catInfo?.color || '#FF9F0A' }}>{categoryGlyph(catInfo?.id, catInfo?.icon)}</span>
+                            </div>
+                            <span className="rounded border border-gdpro-border bg-gdpro-bg-surface px-1.5 py-[1px] text-[9px] font-mono font-semibold text-gdpro-text-muted">
+                              {asset.type?.toUpperCase() || 'FILE'}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -226,28 +280,28 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
                         <Check className="w-2.5 h-2.5 text-gdpro-bg" strokeWidth={3} />
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                    <div className="absolute inset-0 bg-gdpro-bg-elevated/78 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 backdrop-blur-sm">
                       {isImage && (
-                        <button onClick={(e) => { e.stopPropagation(); setPreviewAsset(asset); }} className="p-1.5 rounded-md bg-gdpro-bg/80 text-gdpro-text hover:text-gdpro-accent transition-colors">
+                        <button onClick={(e) => { e.stopPropagation(); setPreviewAsset(asset); }} className="p-1.5 rounded-md bg-white/90 border border-gdpro-border text-gdpro-text hover:text-gdpro-accent transition-colors">
                           <Eye className="w-3.5 h-3.5" strokeWidth={2} />
                         </button>
                       )}
-                      <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 rounded-md bg-gdpro-bg/80 text-gdpro-text hover:text-gdpro-danger transition-colors">
+                      <button onClick={(e) => { e.stopPropagation(); }} className="p-1.5 rounded-md bg-white/90 border border-gdpro-border text-gdpro-text hover:text-gdpro-danger transition-colors">
                         <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
                       </button>
                     </div>
-                    <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="text-[10px] text-white font-medium truncate block">{asset.projectName}</span>
+                    <div className="absolute inset-x-0 bottom-0 p-1.5 bg-white/86 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm border-t border-gdpro-border">
+                      <span className="text-[10px] text-gdpro-text-secondary font-medium truncate block">{asset.projectName}</span>
                     </div>
                   </div>
                   <div className="p-2">
                     <p className="text-[11px] text-gdpro-text font-medium truncate" title={asset.name}>{asset.name}</p>
                     <div className="flex items-center justify-between mt-0.5">
                       <span className="text-[10px] text-gdpro-text-muted">{formatSize(asset.size)}</span>
-                      <span className="text-[10px] px-1 py-[1px] rounded bg-gdpro-bg-hover text-gdpro-text-muted font-medium">{catInfo?.name}</span>
+                      <span className="text-[10px] px-1 py-[1px] rounded bg-gdpro-bg-hover text-gdpro-text-muted font-medium">{categoryName(catInfo?.id, catInfo?.name)}</span>
                     </div>
                     {phaseInfo && (
-                      <span className="text-[10px] px-1 py-[1px] rounded bg-gdpro-bg-hover text-gdpro-text-muted font-medium mt-0.5 inline-block">{phaseInfo.name}</span>
+                      <span className="text-[10px] px-1 py-[1px] rounded bg-gdpro-bg-hover text-gdpro-text-muted font-medium mt-0.5 inline-block">{uiLanguage === 'en' ? copy.phaseLabel(phaseInfo.id) : phaseInfo.name}</span>
                     )}
                   </div>
                 </div>
@@ -258,12 +312,12 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
       </div>
 
       {previewAsset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in p-4" onClick={() => setPreviewAsset(null)}>
-          <div className="max-w-[85vw] max-h-[85vh] relative" onClick={(e) => e.stopPropagation()}>
-            <img src={previewAsset.previewUrl || previewAsset.url} alt={previewAsset.name} className="max-w-full max-h-[80vh] object-contain rounded-[10px] shadow-2xl" />
-            <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent rounded-b-[10px]">
-              <p className="text-[13px] text-white font-medium">{previewAsset.name}</p>
-              <p className="text-[10px] text-white/60">{previewAsset.projectName} · {formatSize(previewAsset.size)}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center gdpro-modal-backdrop animate-fade-in p-4" onClick={() => setPreviewAsset(null)}>
+          <div className="max-w-[85vw] max-h-[85vh] relative gdpro-modal-shell rounded-xl p-2" onClick={(e) => e.stopPropagation()}>
+            <img src={previewAsset.previewUrl || previewAsset.url} alt={previewAsset.name} className="max-w-full max-h-[72vh] object-contain rounded-[10px]" />
+            <div className="px-2 py-2">
+              <p className="text-[13px] text-gdpro-text font-medium">{previewAsset.name}</p>
+              <p className="text-[10px] text-gdpro-text-muted">{previewAsset.projectName} · {formatSize(previewAsset.size)}</p>
             </div>
             <button onClick={() => setPreviewAsset(null)} className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gdpro-bg-elevated border border-gdpro-border flex items-center justify-center text-gdpro-text hover:text-gdpro-danger transition-colors">
               <X className="w-3 h-3" strokeWidth={2} />
@@ -273,12 +327,12 @@ export default function AssetLibrary({ projects, onAssetsChange }) {
       )}
 
       {previewDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in p-4" onClick={() => setPreviewDoc(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center gdpro-modal-backdrop animate-fade-in p-4" onClick={() => setPreviewDoc(null)}>
           <div className="w-full max-w-2xl gdpro-card max-h-[80vh] flex flex-col animate-scale-in shadow-2xl rounded-[10px]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3 border-b border-gdpro-border shrink-0">
               <div>
                 <h3 className="text-[13px] font-semibold text-gdpro-text">{previewDoc.title}</h3>
-                <p className="text-[10px] text-gdpro-text-muted">{previewDoc.projectName} · Phase {previewDoc.phase}</p>
+                <p className="text-[10px] text-gdpro-text-muted">{previewDoc.projectName} · {copy.phaseLabel(previewDoc.phase)}</p>
               </div>
               <button onClick={() => setPreviewDoc(null)} className="p-1 rounded-md hover:bg-gdpro-bg-hover transition-colors">
                 <X className="w-3.5 h-3.5 text-gdpro-text-secondary" strokeWidth={2} />

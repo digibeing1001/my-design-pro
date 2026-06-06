@@ -1,15 +1,28 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, Paperclip, Send, Plus, Check, X, PenLine, Loader2, FolderOpen, FolderPlus, Wand2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Compass, Paperclip, Send, Plus, Check, X, PenLine, Loader2, FolderOpen, FolderPlus, Wand2 } from 'lucide-react';
 import MarkdownRender from './MarkdownRender';
 import AssetMentionDropdown from './AssetMentionDropdown';
 import StructuredOutputRenderer from './StructuredOutputRenderer';
+import DesignControlPanel from './DesignControlPanel';
 import { parseFile } from '../lib/parser';
 
 import { saveToLocal, loadFromLocal } from '../lib/storage';
 import { openclaw } from '../lib/api';
 import { PHASES } from '../data/projects';
 import { buildSystemPrompt, buildContextSummary } from '../lib/contextAssembler';
-import { getQuickActions, canProceedToNext, getPhaseDescription, buildPhaseGuardPrompt, PHASE_CONFIG } from '../lib/phaseGuard';
+import { applyAgentControl } from '../lib/agentControl';
+import { buildDesignControlState } from '../lib/designControl';
+import { getQuickActions, canProceedToNext, getPhaseDescription, canGenerateImage, PHASE_CONFIG } from '../lib/phaseGuard';
+import { buildImageModelRuntimeConfig } from '../data/modelConfig';
+import { uiText } from '../lib/uiLanguage';
+
+const RISK_LABELS = {
+  critical: '高风险',
+  high: '需注意',
+  medium: '可控',
+  low: '稳定',
+  info: '稳定',
+};
 
 const BUTTON_TYPES = {
   ADOPT: 'adopt', REJECT: 'reject', CHOOSE: 'choose',
@@ -37,8 +50,8 @@ function AssetCard({ asset, onAdopt, onReject }) {
   const isImage = asset.type === 'image' || asset.type === 'svg';
   const phaseInfo = PHASES.find((p) => p.id === asset.phase);
   return (
-    <div className="gdpro-card overflow-hidden hover:border-white/15 transition-all duration-200 rounded-[14px]">
-      <div className="aspect-video relative flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)' }}>
+    <div className="gdpro-card gdpro-card-hover overflow-hidden hover:border-gdpro-border-light rounded-lg">
+      <div className="aspect-video relative flex items-center justify-center" style={{ background: 'rgba(238,242,245,0.75)' }}>
         {isImage ? (
           <img src={asset.previewUrl || asset.url} alt={asset.name} className="w-full h-full object-cover" />
         ) : (
@@ -108,11 +121,11 @@ function ProjectSelector({ projects, currentProjectId, onSwitch, onCreate }) {
               <div className={`w-5 h-5 rounded-[4px] flex items-center justify-center text-[10px] font-bold shrink-0 ${
                 currentProjectId === p.id ? 'bg-white/20 text-white' : 'bg-gdpro-bg-hover text-gdpro-text-muted'
               }`}>
-                {p.name.charAt(0)}
+                {String(p.name || p.brandName || 'P').charAt(0)}
               </div>
               <div className="min-w-0 flex-1">
                 <div className={`text-[12px] font-medium truncate ${currentProjectId === p.id ? 'text-white' : 'text-gdpro-text'}`}>
-                  {p.name}
+                  {p.name || p.brandName || 'Untitled project'}
                 </div>
               </div>
               {currentProjectId === p.id && <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={2.5} />}
@@ -157,10 +170,8 @@ function MessageBubble({ message, onButtonClick }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-5`}>
       {!isUser && (
-        <div className="w-7 h-7 rounded-full flex items-center justify-center mr-2.5 shrink-0 mt-0.5"
-          style={{ background: 'linear-gradient(135deg, rgba(45,212,191,0.2), rgba(56,189,248,0.15))', border: '1px solid rgba(45,212,191,0.2)' }}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-gdpro-accent" strokeWidth={2.5} />
+        <div className="w-7 h-7 rounded-lg gdpro-icon-mark flex items-center justify-center mr-2.5 shrink-0 mt-0.5">
+          <PenLine className="w-3.5 h-3.5 text-white" strokeWidth={2.2} />
         </div>
       )}
       <div className={`max-w-[90%] sm:max-w-[80%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
@@ -169,11 +180,11 @@ function MessageBubble({ message, onButtonClick }) {
             <span className="text-[10px] px-2.5 py-[3px] rounded-lg font-medium"
               style={{ background: 'rgba(45,212,191,0.1)', color: '#2DD4BF', border: '1px solid rgba(45,212,191,0.12)' }}
             >
-              Phase {message.phase} · {PHASES.find((p) => p.id === message.phase)?.name}
+              第 {message.phase} 阶段 · {PHASES.find((p) => p.id === message.phase)?.name}
             </span>
           </div>
         )}
-        <div className={`${isUser ? 'bubble-user px-4 py-2.5 rounded-[20px] rounded-tr-[6px]' : 'bubble-assistant px-4 py-2.5 rounded-[20px] rounded-tl-[6px]'} `}>
+        <div className={`${isUser ? 'bubble-user px-4 py-2.5 rounded-lg rounded-tr-[4px]' : 'bubble-assistant px-4 py-2.5 rounded-lg rounded-tl-[4px]'} `}>
           {message.isMarkdown !== false ? (
             <MarkdownRender content={message.text} />
           ) : (
@@ -183,6 +194,16 @@ function MessageBubble({ message, onButtonClick }) {
 
         {message._skillData && (
           <StructuredOutputRenderer data={message._skillData} />
+        )}
+
+        {message.controlEvents && message.controlEvents.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {message.controlEvents.map((event) => (
+              <span key={event.id} className="text-[10px] px-2 py-[3px] rounded-md bg-gdpro-accent/10 text-gdpro-accent border border-gdpro-accent/20">
+                {event.label}
+              </span>
+            ))}
+          </div>
         )}
 
         {message.assets && message.assets.length > 0 && (
@@ -208,9 +229,7 @@ function MessageBubble({ message, onButtonClick }) {
         {message.attachments && message.attachments.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {message.attachments.map((att, i) => (
-              <div key={i} className="flex items-center gap-1.5 px-2.5 py-[4px] rounded-lg text-[11px]"
-                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-              >
+              <div key={i} className="flex items-center gap-1.5 px-2.5 py-[4px] rounded-lg text-[11px] gdpro-surface-tile">
                 <Paperclip className="w-3 h-3 text-gdpro-text-muted" strokeWidth={2} />
                 <span className="text-gdpro-text-secondary truncate max-w-[100px]">{att.name}</span>
               </div>
@@ -222,7 +241,17 @@ function MessageBubble({ message, onButtonClick }) {
   );
 }
 
-export default function DesignerAgent({ project, projects, onProjectSwitch, onProjectCreate, onAssetAdopted, onAssetRejected, onAssetsChange, llm, imageModel, references, assets }) {
+function imageModelDisplayName(config, fallback) {
+  return config?.displayName || fallback || 'Image service';
+}
+
+function imageModelRouteTone(config) {
+  if (config?.deliveryRoute?.finalDeliveryAllowed) return 'border-gdpro-success/20 bg-gdpro-success/10 text-gdpro-success';
+  if (config?.deliveryRoute?.vectorOutput || config?.deliveryRoute?.editableSource) return 'border-gdpro-accent/20 bg-gdpro-accent/10 text-gdpro-accent';
+  return 'border-gdpro-border bg-gdpro-bg-surface text-gdpro-text-secondary';
+}
+
+export default function DesignerAgent({ project, projects, onProjectSwitch, onProjectCreate, onAssetAdopted, onAssetRejected, onAssetsChange, onProjectUpdate, llm, imageModel, references, assets, queuedDesignRequest, onQueuedDesignRequestConsumed, uiLanguage }) {
   const [messages, setMessages] = useState(() => loadFromLocal(`chat_${project?.id}`, []));
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -235,6 +264,28 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
+  const processedQueuedPromptRef = useRef(null);
+  const controlState = buildDesignControlState(project);
+  const copy = uiText('designer', uiLanguage);
+  const imageModelRuntime = useMemo(() => buildImageModelRuntimeConfig(imageModel), [imageModel]);
+  const imageModelName = imageModelDisplayName(imageModelRuntime, imageModel);
+  const imageModelRouteLabel = imageModelRuntime?.deliveryRoute?.finalDeliveryAllowed
+    ? copy.sourceCandidateRoute
+    : copy.conceptOnlyRoute;
+  const phaseName = (phase) => copy.phaseNames?.[phase] || PHASES.find((p) => p.id === phase)?.name || '';
+  const phaseDescription = (phase) => copy.phaseDescriptions?.[phase] || getPhaseDescription(phase);
+  const phaseAllowed = (phase) => (PHASE_CONFIG[phase]?.allowedAssetCategories || [])
+    .map((category) => copy.assetCategories?.[category] || category)
+    .join(uiLanguage === 'en' ? ', ' : '、');
+  const outputPathLabel = (label) => copy.outputPathLabels?.[label] || label;
+  const contextSummaryText = buildContextSummary({
+    profile: loadFromLocal('designer_profile', {}),
+    references: references || [],
+    assets: assets || {},
+    project,
+    assetMentions: [],
+    imageModelConfig: imageModelRuntime,
+  });
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
   useEffect(() => { if (project?.id) setMessages(loadFromLocal(`chat_${project.id}`, [])); }, [project?.id]);
@@ -322,12 +373,14 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
     }
 
     // ── Assemble context from profile + knowledge base + assets ──
+    const imageModelConfig = buildImageModelRuntimeConfig(imageModel);
     const systemPrompt = buildSystemPrompt({
       profile: loadFromLocal('designer_profile', {}),
       references: references || [],
       assets: assets || {},
       project,
       assetMentions,
+      imageModelConfig,
     });
     const contextSummary = buildContextSummary({
       profile: loadFromLocal('designer_profile', {}),
@@ -335,7 +388,9 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
       assets: assets || {},
       project,
       assetMentions,
+      imageModelConfig,
     });
+    const currentControlState = buildDesignControlState(project);
 
     const userMsg = {
       id: `msg_${Date.now()}`, role: 'user', text: text.trim(),
@@ -352,26 +407,31 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
     // The Skill returns: structured output (text, assets, buttons, phase changes, reports)
     try {
       const response = await openclaw.sendMessage(project?.id, text.trim(), {
-        llm, imageModel, systemPrompt, references, assets, action,
+        llm, imageModel, imageModelConfig, systemPrompt, references, assets, action, contextSummary, controlState: currentControlState,
       });
+      const controlResult = applyAgentControl(project, response, { action });
+      if (controlResult.changed && project?.id) {
+        onProjectUpdate?.(project.id, controlResult.project);
+      }
 
       const agentMsg = {
         id: `msg_${Date.now() + 1}`, role: 'assistant',
-        text: response?.text || 'Skill 未返回内容',
-        phase: response?.phase || project?.currentPhase || 1,
+        text: response?.text || '本地创作服务没有返回内容。',
+        phase: controlResult.project?.currentPhase || response?.phase || project?.currentPhase || 1,
         isMarkdown: true,
         timestamp: Date.now(),
         assets: response?.assets || [],
         buttons: response?.buttons || [],
         // Skill may return structured data for Console to render
         _skillData: response?._skillData || null,
+        controlEvents: controlResult.events || [],
       };
       persistMessages([...newMessages, agentMsg]);
     } catch (err) {
       console.error('[Agent] Skill call failed:', err.message);
       const errorMsg = {
         id: `msg_${Date.now() + 1}`, role: 'assistant',
-        text: `**无法连接到 Skill**\n\n当前 Gateway 未连接或 Skill 服务不可用。\n\nConsole 是 Graphic Design Pro 的可视化前端，所有设计工作流、合规审查、输出生成等能力均由 Skill 提供。未连接 Skill 时，Console 无法独立运作。\n\n**解决方法：**\n1. 通过 OpenClaw/WorkBuddy 等 Agent 工具打开 Console\n2. 确保 Agent 已正确配置 Gateway URL 和 Token\n3. 或点击左下角状态栏中的「配置 Gateway 连接」`,
+        text: `**本地创作服务还没有连接**\n\n当前可以查看项目、调整流程和整理资产；连接本地创作服务后，才能创建画面、完成检查并写入交付记录。\n\n**你可以这样处理：**\n1. 通过本地启动器打开工作台\n2. 确认本地创作服务正在运行\n3. 点击左下角「连接本地服务」完成连接`,
         phase: project?.currentPhase || 1,
         isMarkdown: true,
         timestamp: Date.now(),
@@ -382,15 +442,25 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
     setIsLoading(false);
   };
 
+  useEffect(() => {
+    if (!queuedDesignRequest?.text || !project?.id) return;
+    if (processedQueuedPromptRef.current === queuedDesignRequest.id) return;
+    processedQueuedPromptRef.current = queuedDesignRequest.id;
+    onQueuedDesignRequestConsumed?.(queuedDesignRequest.id);
+    handleSend(queuedDesignRequest.text, [], { action: queuedDesignRequest.action || 'workflow_node_review' });
+  }, [queuedDesignRequest, project?.id]);
+
   const handleButtonClick = (type, payload, messageId) => {
     if (type === BUTTON_TYPES.ADOPT && payload) {
-      onAssetAdopted?.(payload);
+      onAssetAdopted?.({ ...payload, projectId: payload.projectId || project?.id });
       persistMessages(messages.map((m) => m.id === messageId && m.assets
         ? { ...m, assets: m.assets.map((a) => a.id === payload.id ? { ...a, status: 'adopted' } : a) } : m));
     } else if (type === BUTTON_TYPES.REJECT && payload) {
-      onAssetRejected?.(payload);
+      onAssetRejected?.({ ...payload, projectId: payload.projectId || project?.id });
       persistMessages(messages.map((m) => m.id === messageId && m.assets
         ? { ...m, assets: m.assets.filter((a) => a.id !== payload.id) } : m));
+    } else if (type === BUTTON_TYPES.NEXT_PHASE) {
+      handleSend(`[阶段推进请求] ${JSON.stringify(payload || {})}`, [], { action: 'request_proceed_phase' });
     } else {
       handleSend(`[按钮操作: ${type}] ${JSON.stringify(payload)}`);
     }
@@ -402,17 +472,22 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
     if (!genPrompt.trim() || !project) return;
     const phase = project.currentPhase || 1;
     if (!canGenerateImage(phase)) {
-      alert(`当前「${PHASE_CONFIG[phase]?.name}」阶段不允许 AI 生图。请在「样稿生成」或「物料扩展」阶段使用。`);
+      alert(copy.generateBlocked?.(phaseName(phase)) || `当前「${PHASE_CONFIG[phase]?.name}」阶段不适合创建概念图。请在「样稿方向」或「物料扩展」阶段使用。`);
       return;
     }
     setIsGenerating(true);
+    const imageModelConfig = buildImageModelRuntimeConfig(imageModel);
+    const activeModelName = imageModelDisplayName(imageModelConfig, imageModel);
+    const activeRouteLabel = imageModelConfig?.deliveryRoute?.finalDeliveryAllowed
+      ? copy.sourceCandidateRoute
+      : copy.conceptOnlyRoute;
     try {
-      const res = await openclaw.generateImage(genPrompt.trim(), { model: imageModel, size: genSize, n: 1 });
+      const res = await openclaw.generateImage(genPrompt.trim(), { model: imageModel, imageModelConfig, size: genSize, n: 1 });
       if (res?.images?.[0]?.url || res?.url) {
         const imageUrl = res.images?.[0]?.url || res.url;
         const asset = {
           id: `gen_${Date.now()}`,
-          name: `AI 生成 — ${genPrompt.trim().slice(0, 20)}`,
+          name: copy.conceptAssetName?.(genPrompt.trim()) || `概念图 — ${genPrompt.trim().slice(0, 20)}`,
           type: 'image',
           category: 'draft',
           status: 'pending',
@@ -427,7 +502,8 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
         // Show generated image as a message with adopt/reject buttons
         const genMsg = {
           id: `msg_${Date.now()}`, role: 'assistant',
-          text: `已使用 **${imageModel}** 生成以下设计稿：\n\n> Prompt: ${genPrompt.trim()}`,
+          text: copy.generatedConceptMessage?.(activeModelName, genPrompt.trim(), activeRouteLabel)
+            || `已使用 **${activeModelName}** 创建以下设计稿：\n\n> 描述：${genPrompt.trim()}`,
           phase, isMarkdown: true, timestamp: Date.now(),
           assets: [asset],
         };
@@ -436,13 +512,14 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
         setShowGenPanel(false);
         setGenPrompt('');
       } else {
-        throw new Error('Gateway 返回数据格式异常');
+        throw new Error('本地创作服务返回的数据格式异常');
       }
     } catch (err) {
       console.error('[Generate] Skill image generation failed:', err.message);
       const errorMsg = {
         id: `msg_${Date.now()}`, role: 'assistant',
-        text: `**生图失败**\n\n无法通过 Skill 生成图像。请检查 Gateway 连接状态。\n\n> 模型：${imageModel}\n> 尺寸：${genSize}\n> Prompt: ${genPrompt.trim()}`,
+        text: copy.imageGenerationFailed?.(activeModelName, genSize, genPrompt.trim())
+          || `**图像创建失败**\n\n当前没有收到可用结果。请检查图像服务是否已经保存，并确认本地创作服务正在运行。\n\n> 连接：${activeModelName}\n> 尺寸：${genSize}\n> 描述：${genPrompt.trim()}`,
         phase, isMarkdown: true, timestamp: Date.now(),
         assets: [],
       };
@@ -455,10 +532,11 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
   };
 
   return (
-    <div className="h-full flex flex-col" onDrop={(e) => { e.preventDefault(); handleSend('', Array.from(e.dataTransfer.files)); }} onDragOver={(e) => e.preventDefault()}>
+    <div className="h-full flex min-w-0" onDrop={(e) => { e.preventDefault(); handleSend('', Array.from(e.dataTransfer.files)); }} onDragOver={(e) => e.preventDefault()}>
+      <section className="min-w-0 flex-1 flex flex-col">
       {/* Project Selector Bar */}
-      <div className="shrink-0 px-3 py-2 flex items-center gap-3"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+      <div className="shrink-0 px-3 py-2 flex items-center gap-3 overflow-x-auto scrollbar-hide"
+        style={{ borderBottom: '1px solid rgba(24,35,48,0.1)', background: 'rgba(255,255,255,0.72)' }}
       >
         <ProjectSelector
           projects={projects}
@@ -467,17 +545,37 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
           onCreate={onProjectCreate}
         />
         {project && (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-gdpro-text-muted">Phase {project.currentPhase}</span>
+          <div className="flex items-center gap-2 min-w-max">
+            <span className="text-[11px] text-gdpro-text-muted">{copy.phaseLabel(project.currentPhase)}</span>
             <span className="text-[10px] px-1.5 py-[1px] rounded bg-gdpro-accent/10 text-gdpro-accent font-semibold">
-              {PHASES.find((p) => p.id === project.currentPhase)?.name}
+              {phaseName(project.currentPhase)}
+            </span>
+            <span className={`hidden sm:inline-flex text-[10px] px-1.5 py-[1px] rounded font-semibold ${
+              controlState.riskLevel === 'critical'
+                ? 'bg-gdpro-danger/10 text-gdpro-danger'
+                : 'bg-gdpro-success/10 text-gdpro-success'
+            }`}>
+              {copy.deliveryReadiness(controlState.readiness)}
+            </span>
+            <span className="hidden md:inline text-[10px] text-gdpro-text-muted truncate">
+              {outputPathLabel(controlState.outputPath.label)}
             </span>
             {canProceedToNext(project.currentPhase) && (
               <button
-                onClick={() => handleSend('', [], { action: 'request_proceed_phase' })}
-                className="text-[10px] px-1.5 py-[1px] rounded bg-gdpro-success/10 text-gdpro-success border border-gdpro-success/20 hover:bg-gdpro-success/15 transition-colors font-medium"
+                onClick={() => {
+                  if (controlState.phaseState?.readyToAdvance) {
+                    handleSend('', [], { action: 'request_proceed_phase' });
+                  }
+                }}
+                disabled={!controlState.phaseState?.readyToAdvance}
+                title={controlState.phaseState?.readyToAdvance ? copy.proceedReadyTitle : copy.proceedBlockedTitle}
+                className={`text-[10px] px-1.5 py-[1px] rounded border transition-colors font-medium ${
+                  controlState.phaseState?.readyToAdvance
+                    ? 'bg-gdpro-success/10 text-gdpro-success border-gdpro-success/20 hover:bg-gdpro-success/15'
+                    : 'bg-gdpro-bg-hover text-gdpro-text-muted border-gdpro-border cursor-not-allowed'
+                }`}
               >
-                推进 →
+                {controlState.phaseState?.readyToAdvance ? copy.proceed : copy.completeFirst}
               </button>
             )}
           </div>
@@ -487,19 +585,19 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
       {/* Phase Guard Notice + Progressive Disclosure Layer */}
       {project && (
         <div className="shrink-0 px-3 py-1.5"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(255,255,255,0.03)' }}
+          style={{ borderBottom: '1px solid rgba(24,35,48,0.1)', background: 'rgba(255,255,255,0.72)' }}
         >
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] px-1.5 py-[1px] rounded bg-gdpro-accent/10 text-gdpro-accent font-semibold">Phase {project.currentPhase}</span>
-            <span className="text-[11px] text-gdpro-text-secondary">{getPhaseDescription(project.currentPhase)}</span>
-            <span className="text-[10px] text-gdpro-text-muted ml-auto">
-              允许：{PHASE_CONFIG[project.currentPhase]?.allowedAssetCategories.join('、')}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[10px] px-1.5 py-[1px] rounded bg-gdpro-accent/10 text-gdpro-accent font-semibold">{copy.phaseLabel(project.currentPhase)}</span>
+            <span className="text-[11px] text-gdpro-text-secondary truncate">{phaseDescription(project.currentPhase)}</span>
+            <span className="hidden sm:inline text-[10px] text-gdpro-text-muted ml-auto">
+              {copy.stageCanDo}{phaseAllowed(project.currentPhase)}
             </span>
           </div>
           {/* Layer / Gate indicators */}
-          <div className="flex items-center gap-3 mt-1.5">
+          <div className="flex items-center gap-3 mt-1.5 overflow-hidden">
             <div className="flex items-center gap-1">
-              <span className="text-[9px] text-gdpro-text-muted">Layer</span>
+              <span className="text-[9px] text-gdpro-text-muted">{copy.infoLayer}</span>
               {[1, 2, 3].map((layer) => {
                 const unlocked = (project.documents?.brief && layer === 1) ||
                   (project.documents?.philosophy && layer >= 2) ||
@@ -509,27 +607,38 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
                     className={`text-[9px] px-1 rounded font-medium ${
                       unlocked ? 'bg-gdpro-success/10 text-gdpro-success' : 'bg-gdpro-bg-hover text-gdpro-text-muted'
                     }`}
-                    title={unlocked ? '已解锁' : '未解锁'}
+                    title={unlocked ? copy.unlocked : copy.locked}
                   >
-                    L{layer}
+                    {layer}
                   </span>
                 );
               })}
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-[9px] text-gdpro-text-muted">Gate</span>
-              {[1, 2, 3].map((g) => {
-                const passed = project.currentPhase > g || (project.currentPhase === g && project.documents?.brief);
+              <span className="text-[9px] text-gdpro-text-muted">{copy.phaseChecks}</span>
+              {controlState.gates.slice(0, 3).map((gate, index) => {
+                const passed = gate.passed;
                 return (
-                  <span key={g}
+                  <span key={gate.id}
                     className={`text-[9px] px-1 rounded font-medium ${
                       passed ? 'bg-gdpro-success/10 text-gdpro-success' : 'bg-gdpro-bg-hover text-gdpro-text-muted'
                     }`}
+                    title={gate.label}
                   >
-                    G{g}
+                    {index + 1}
                   </span>
                 );
               })}
+            </div>
+            <div className="hidden md:flex items-center gap-1 min-w-0">
+              <span className="text-[9px] text-gdpro-text-muted">{copy.risk}</span>
+              <span className={`text-[9px] px-1.5 rounded font-medium ${
+                controlState.riskLevel === 'critical'
+                  ? 'bg-gdpro-danger/10 text-gdpro-danger'
+                  : 'bg-gdpro-success/10 text-gdpro-success'
+              }`}>
+                {copy.riskLabels?.[controlState.riskLevel] || RISK_LABELS[controlState.riskLevel] || controlState.riskLevel}
+              </span>
             </div>
           </div>
         </div>
@@ -538,28 +647,27 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 space-y-1">
         {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center space-y-5 animate-fade-in">
-            <div className="w-16 h-16 rounded-[20px] flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, rgba(45,212,191,0.15), rgba(56,189,248,0.1))', border: '1px solid rgba(45,212,191,0.15)' }}
-            >
-              <Sparkles className="w-8 h-8 text-gdpro-accent" strokeWidth={1.5} />
+          <div className="h-full flex flex-col items-center justify-center text-center space-y-5 animate-fade-in px-6 max-w-full overflow-hidden">
+            <div className="w-16 h-16 rounded-lg gdpro-icon-mark flex items-center justify-center">
+              <Compass className="w-8 h-8 text-white" strokeWidth={1.6} />
             </div>
             <div>
-              <h3 className="text-[16px] font-semibold text-gdpro-text mb-1.5 tracking-tight">设计师 Agent</h3>
-              <p className="text-[13px] text-gdpro-text-secondary max-w-sm leading-relaxed">
-                描述你的设计需求，或上传参考图、Logo 等素材开始协作。<br/>
-                Agent 会按 6 Phase 工作流推进，所有产出需你确认后才会归档。
+              <h3 className="text-[16px] font-semibold text-gdpro-text mb-1.5 tracking-tight">{copy.emptyTitle}</h3>
+              <p className="text-[13px] text-gdpro-text-secondary w-full max-w-[280px] sm:max-w-sm leading-relaxed mx-auto">
+                {copy.emptyBodyLines?.map((line, index) => (
+                  <React.Fragment key={line}>
+                    {line}
+                    {index < copy.emptyBodyLines.length - 1 && <br />}
+                  </React.Fragment>
+                ))}
               </p>
             </div>
-            <div className="flex flex-wrap justify-center gap-2 max-w-lg">
+            <div className="flex flex-wrap justify-center gap-2 max-w-[310px] sm:max-w-lg w-full">
               {getQuickActions(project?.currentPhase || 1).map((s) => (
                 <button key={s} onClick={() => handleSend(s)}
-                  className="px-3.5 py-[6px] text-[12px] rounded-xl text-gdpro-text-secondary transition-all duration-200 hover:text-gdpro-text"
-                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
+                  className="gdpro-button-secondary px-2.5 sm:px-3.5 py-[6px] text-[11px] sm:text-[12px] rounded-lg hover:text-gdpro-text min-w-0"
                 >
-                  {s}
+                  {copy.quickActions?.[s] || s}
                 </button>
               ))}
             </div>
@@ -575,12 +683,10 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
             >
               <Loader2 className="w-3.5 h-3.5 text-gdpro-accent animate-spin" strokeWidth={2.5} />
             </div>
-            <div className="px-4 py-2.5 rounded-[20px] rounded-tl-[6px]"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-            >
+            <div className="px-4 py-2.5 rounded-lg rounded-tl-[4px] gdpro-surface-tile">
               <div className="flex items-center gap-2 text-gdpro-text-muted">
                 <div className="w-1.5 h-1.5 rounded-full bg-gdpro-accent animate-pulse" />
-                <span className="text-[12px]">设计师 Agent 思考中...</span>
+                <span className="text-[12px]">{copy.thinking}</span>
               </div>
             </div>
           </div>
@@ -589,7 +695,7 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
 
       {/* Input */}
       <div className="shrink-0 px-3 py-2.5"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+        style={{ borderTop: '1px solid rgba(24,35,48,0.1)', background: 'rgba(255,255,255,0.78)' }}
       >
         {files.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
@@ -614,18 +720,14 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
               anchorRef={textareaRef}
             />
           )}
-          <div className="flex items-end gap-2 p-1.5 transition-all duration-200 rounded-[14px]"
+          <div className="flex items-end gap-2 p-1.5 rounded-lg gdpro-floating-hud"
             style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.08)',
               backdropFilter: 'blur(12px)',
               WebkitBackdropFilter: 'blur(12px)',
             }}
-            onFocusCapture={(e) => { e.currentTarget.style.borderColor = 'rgba(45,212,191,0.3)'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-            onBlurCapture={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
           >
             <button type="button" onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors shrink-0 text-gdpro-text-muted hover:text-gdpro-text" title="上传文件">
+              className="p-1.5 rounded-lg hover:bg-gdpro-bg-hover transition-colors shrink-0 text-gdpro-text-muted hover:text-gdpro-text" title={copy.uploadTitle}>
               <Paperclip className="w-4 h-4" strokeWidth={1.5} />
             </button>
             <input ref={fileInputRef} type="file" multiple className="hidden"
@@ -670,19 +772,16 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
 
             {/* Generate Image Panel */}
             {showGenPanel && (
-              <div className="absolute left-0 bottom-full mb-2 w-full rounded-[14px] z-50 p-3"
+              <div className="absolute left-0 bottom-full mb-2 w-full rounded-lg z-50 p-3 gdpro-modal-shell"
                 style={{
-                  background: 'rgba(15,25,40,0.9)',
-                  border: '1px solid rgba(255,255,255,0.1)',
                   backdropFilter: 'blur(24px) saturate(180%)',
                   WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
                 }}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[12px] font-semibold text-gdpro-text flex items-center gap-1.5">
                     <Wand2 className="w-3.5 h-3.5 text-gdpro-accent" strokeWidth={2} />
-                    AI 生图
+                    {copy.conceptPanelTitle}
                   </span>
                   <button onClick={() => setShowGenPanel(false)} className="text-gdpro-text-muted hover:text-gdpro-text transition-colors">
                     <X className="w-3.5 h-3.5" strokeWidth={2} />
@@ -691,17 +790,13 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
                 <textarea
                   value={genPrompt}
                   onChange={(e) => setGenPrompt(e.target.value)}
-                  placeholder="描述你想要生成的图像..."
+                  placeholder={copy.conceptPlaceholder}
                   rows={2}
                   className="w-full rounded-xl px-2.5 py-1.5 text-[12px] text-gdpro-text placeholder:text-gdpro-text-muted/50 resize-none outline-none mb-2 gdpro-input"
                 />
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[11px] text-gdpro-text-muted">尺寸：</span>
-                  {[
-                    { label: '正方形', value: '1024x1024' },
-                    { label: '竖版', value: '1024x1536' },
-                    { label: '横版', value: '1536x1024' },
-                  ].map((s) => (
+                  <span className="text-[11px] text-gdpro-text-muted">{copy.sizeLabel}</span>
+                  {copy.sizes.map((s) => (
                     <button
                       key={s.value}
                       onClick={() => setGenSize(s.value)}
@@ -714,7 +809,10 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
                       {s.label}
                     </button>
                   ))}
-                  <span className="text-[10px] text-gdpro-text-muted ml-auto">{imageModel}</span>
+                  <span className="text-[10px] text-gdpro-text-muted ml-auto">{imageModelName}</span>
+                </div>
+                <div className={`mb-2 rounded-md border px-2 py-1 text-[10px] leading-relaxed ${imageModelRouteTone(imageModelRuntime)}`}>
+                  {copy.modelRouteNote?.(imageModelName, imageModelRouteLabel) || `${imageModelName} · ${imageModelRouteLabel}`}
                 </div>
                 <button
                   onClick={handleGenerate}
@@ -722,22 +820,22 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
                   className="w-full py-[5px] rounded-md bg-gdpro-accent text-gdpro-bg text-[12px] font-medium hover:bg-gdpro-accent-hover transition-colors disabled:opacity-30 flex items-center justify-center gap-1.5"
                 >
                   {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={2.5} /> : <Wand2 className="w-3.5 h-3.5" strokeWidth={2.5} />}
-                  {isGenerating ? '生成中...' : '生成图像'}
+                  {isGenerating ? copy.creating : copy.createConcept}
                 </button>
               </div>
             )}
 
             <textarea ref={textareaRef} value={input} onChange={handleInputChange}
               onKeyDown={handleInputKeyDown}
-              placeholder={project ? `与设计师 Agent 讨论「${project.name}」...（输入 @ 引用资产）` : '先选择一个项目...'}
+              placeholder={project ? copy.inputPlaceholder(project.name) : copy.noProjectPlaceholder}
               disabled={!project} rows={1}
               className="flex-1 bg-transparent text-[13px] text-gdpro-text placeholder:text-gdpro-text-muted/50 resize-none outline-none min-h-[20px] max-h-[100px] py-1 disabled:opacity-40"
             />
             <button type="button" onClick={() => setShowGenPanel((v) => !v)}
               disabled={!project}
-              className={`p-1.5 rounded-lg transition-colors shrink-0 disabled:opacity-30 ${showGenPanel ? 'text-gdpro-accent' : 'text-gdpro-text-muted hover:text-gdpro-text hover:bg-white/10'}`}
+              className={`p-1.5 rounded-lg transition-colors shrink-0 disabled:opacity-30 ${showGenPanel ? 'text-gdpro-accent' : 'text-gdpro-text-muted hover:text-gdpro-text hover:bg-gdpro-bg-hover'}`}
               style={showGenPanel ? { background: 'rgba(45,212,191,0.12)' } : {}}
-              title="AI 生图"
+              title={copy.createConcept}
             >
               <Wand2 className="w-4 h-4" strokeWidth={1.5} />
             </button>
@@ -748,6 +846,14 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
           </div>
         </form>
       </div>
+      </section>
+      <DesignControlPanel
+        project={project}
+        contextSummary={contextSummaryText}
+        onAction={(prompt, action) => handleSend(prompt, [], { action })}
+        onProjectUpdate={onProjectUpdate}
+        uiLanguage={uiLanguage}
+      />
     </div>
   );
 }

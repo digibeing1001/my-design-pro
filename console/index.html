@@ -4,16 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Graphic Design Pro Console</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%2364e4c0'/%3E%3Cstop offset='1' stop-color='%230f927c'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Cpath d='M43 18 31 46l-4-13-13-4 29-11Z' fill='white' opacity='.94'/%3E%3Cpath d='m31 33 12-15-15 12' fill='none' stroke='%230a6d60' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' opacity='.55'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@300;400;500;600&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-      body { margin: 0; color: #F0F4F8; font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif; }
+      body { margin: 0; color: #17202A; background: #F4F6F8; font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif; }
       #root { min-height: 100vh; }
-      #debug-errors { position: fixed; top: 0; left: 0; right: 0; z-index: 99999; background: rgba(15,25,40,0.9); border-bottom: 2px solid #F87171; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; max-height: 50vh; overflow-y: auto; display: none; backdrop-filter: blur(12px); }
+      #debug-errors { position: fixed; top: 0; left: 0; right: 0; z-index: 99999; background: rgba(255,255,255,0.96); border-bottom: 2px solid #EF4444; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; max-height: 50vh; overflow-y: auto; display: none; backdrop-filter: blur(12px); box-shadow: 0 18px 60px rgba(24,35,48,0.16); }
       #debug-errors.show { display: block; }
-      #debug-errors .err-title { color: #F87171; font-weight: bold; margin-bottom: 8px; }
-      #debug-errors .err-item { color: #F0F4F8; margin-bottom: 4px; word-break: break-all; }
+      #debug-errors .err-title { color: #DC2626; font-weight: bold; margin-bottom: 8px; }
+      #debug-errors .err-item { color: #17202A; margin-bottom: 4px; word-break: break-all; }
     </style>
   </head>
   <body>

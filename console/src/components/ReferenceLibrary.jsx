@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { BookOpen, Upload, X, Eye, Trash2, Target, Palette, Ruler, Image as ImageIcon, Lightbulb, FileText, Loader2 } from 'lucide-react';
 import { parseFile } from '../lib/parser';
-
+import { REFERENCE_DOCS } from '../data/references';
+import { uiText } from '../lib/uiLanguage';
 
 const REF_CATEGORIES = [
   { id: 'competitor', name: '竞品', icon: Target, color: '#FF453A' },
@@ -10,20 +11,65 @@ const REF_CATEGORIES = [
   { id: 'material', name: '素材', icon: ImageIcon, color: '#30D158' },
 ];
 
-export default function ReferenceLibrary({ projects, onReferencesChange }) {
+function getBuiltinCategory(id) {
+  if (id === 'asset-quality') return 'material';
+  if (id === 'position-4q' || id === '5d-critique') return 'style';
+  return 'guideline';
+}
+
+function builtinDocCopy(doc, copy) {
+  return copy?.builtinDocs?.[doc.id] || {};
+}
+
+function builtinSections(doc, copy) {
+  return builtinDocCopy(doc, copy).sections || doc.sections || [];
+}
+
+function buildBuiltinContent(doc, copy) {
+  return builtinSections(doc, copy)
+    .map((section) => `${section.title}\n\n${section.content}`)
+    .join('\n\n');
+}
+
+export default function ReferenceLibrary({ projects, onReferencesChange, uiLanguage }) {
   const [filter, setFilter] = useState('all');
   const [previewRef, setPreviewRef] = useState(null);
   const [parsedContent, setParsedContent] = useState(null);
   const [parsingIds, setParsingIds] = useState(new Set());
   const fileInputRef = useRef(null);
+  const copy = uiText('referenceLibrary', uiLanguage);
 
-  // Collect user-uploaded references from all projects
-  const allRefs = [];
+  const builtinRefs = REFERENCE_DOCS.map((doc) => {
+    const docCopy = builtinDocCopy(doc, copy);
+    const content = buildBuiltinContent(doc, copy);
+    return {
+      id: `builtin_${doc.id}`,
+      name: docCopy.title || doc.title,
+      size: content.length,
+      type: 'guide',
+      category: getBuiltinCategory(doc.id),
+      projectName: copy.builtinProject,
+      projectId: 'builtin',
+      createdAt: 0,
+      builtin: true,
+      parsed: {
+        status: 'parsed',
+        message: copy.collected,
+        excerpt: docCopy.desc || doc.desc,
+        content,
+        sections: builtinSections(doc, copy),
+      },
+    };
+  });
+
+  const uploadedRefs = [];
   projects.forEach((proj) => {
     (proj.references || []).forEach((r) => {
-      allRefs.push({ ...r, projectName: proj.name, projectId: proj.id });
+      uploadedRefs.push({ ...r, projectName: proj.name, projectId: proj.id });
     });
   });
+
+  const allRefs = [...builtinRefs, ...uploadedRefs];
 
   const filtered = filter === 'all' ? allRefs : allRefs.filter((r) => r.category === filter);
 
@@ -41,7 +87,7 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
       createdAt: Date.now(),
       url: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
       previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-      parsed: { status: 'parsing', message: '正在解析...' },
+      parsed: { status: 'parsing', message: copy.parsing },
     }));
 
     // Save refs immediately (with parsing status)
@@ -99,11 +145,11 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
             <BookOpen className="w-4 h-4 text-gdpro-accent" strokeWidth={1.5} />
-            <h2 className="text-[15px] font-semibold text-gdpro-text tracking-tight">知识库</h2>
+            <h2 className="text-[15px] font-semibold text-gdpro-text tracking-tight">{copy.title}</h2>
           </div>
           <button onClick={() => fileInputRef.current?.click()} className="gdpro-button text-[12px] flex items-center gap-1">
             <Upload className="w-3 h-3" strokeWidth={2.5} />
-            上传
+            {copy.upload}
           </button>
           <input ref={fileInputRef} type="file" multiple className="hidden"
             onChange={(e) => handleFiles(e.target.files)} accept="image/*,.pdf,.svg,.md,.txt" />
@@ -111,18 +157,16 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
 
         {/* Hero Banner */}
         <div className="relative overflow-hidden rounded-[10px] bg-gradient-to-br from-gdpro-bg-elevated to-gdpro-bg-surface border border-gdpro-border p-4 mb-3">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gdpro-accent/5 rounded-full blur-3xl" />
           <div className="relative flex items-start gap-3">
             <div className="w-8 h-8 rounded-lg bg-gdpro-accent/10 flex items-center justify-center shrink-0">
-              <Lightbulb className="w-4 h-4 text-gdpro-accent" strokeWidth={1.5} />
+                <Lightbulb className="w-4 h-4 text-gdpro-accent" strokeWidth={1.5} />
             </div>
             <div>
               <p className="text-[13px] font-medium text-gdpro-text leading-relaxed">
-                内置全球顶尖设计机构及顶级消费品牌设计知识库
+                {copy.heroTitle}
               </p>
               <p className="text-[11px] text-gdpro-text-muted mt-0.5 leading-relaxed">
-                聚合 Pentagram、IDEO、Landor 等 39 家顶尖设计机构的品牌战略方法论与案例库，
-                以及 Apple、Nike、星巴克等 10 个顶级消费品牌的 VI 全案体系
+                {copy.heroBody}
               </p>
             </div>
           </div>
@@ -133,7 +177,7 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
             className={`px-2.5 py-[3px] rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
               filter === 'all' ? 'bg-gdpro-info text-white' : 'bg-gdpro-bg-surface text-gdpro-text-secondary hover:text-gdpro-text'
             }`}>
-            全部 ({allRefs.length})
+            {copy.all(allRefs.length)}
           </button>
           {REF_CATEGORIES.map((cat) => {
             const count = allRefs.filter((r) => r.category === cat.id).length;
@@ -144,7 +188,7 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
                   filter === cat.id ? 'bg-gdpro-info text-white' : 'bg-gdpro-bg-surface text-gdpro-text-secondary hover:text-gdpro-text'
                 }`}>
                 <Icon className="w-3 h-3" strokeWidth={2} />
-                {cat.name} ({count})
+                {copy.categories?.[cat.id] || cat.name} ({count})
               </button>
             );
           })}
@@ -173,15 +217,19 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
         {allRefs.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center py-10">
             <BookOpen className="w-8 h-8 text-gdpro-text-muted mb-2" strokeWidth={1.5} />
-            <p className="text-[13px] text-gdpro-text-secondary">知识库为空</p>
+            <p className="text-[13px] text-gdpro-text-secondary">{copy.emptyTitle}</p>
             <p className="text-[11px] text-gdpro-text-muted mt-0.5 max-w-xs">
-              上传竞品报告、品牌手册、风格参考图或网页链接。<br/>
-              系统会自动解析内容，为设计 Agent 提供参考。
+              {copy.emptyBodyLines?.map((line, index) => (
+                <React.Fragment key={line}>
+                  {line}
+                  {index < copy.emptyBodyLines.length - 1 && <br />}
+                </React.Fragment>
+              ))}
             </p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center py-10">
-            <p className="text-[13px] text-gdpro-text-secondary">该分类下暂无内容</p>
+            <p className="text-[13px] text-gdpro-text-secondary">{copy.emptyCategory}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
@@ -195,7 +243,7 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
               return (
                 <div key={ref.id} className="gdpro-card overflow-hidden group gdpro-card-hover border-gdpro-border rounded-[10px] flex flex-col">
                   <div className="aspect-[16/10] bg-gdpro-bg-surface relative cursor-pointer"
-                    onClick={() => isImage && !isParsing && setPreviewRef(ref)}>
+                    onClick={() => !isParsing && setPreviewRef(ref)}>
                     {isImage && ref.previewUrl ? (
                       <img src={ref.previewUrl} alt={ref.name} className="w-full h-full object-cover" />
                     ) : (
@@ -207,29 +255,31 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
                             <CatIcon className="w-5 h-5" style={{ color: catInfo?.color || '#FF9F0A' }} strokeWidth={1.5} />
                           )}
                         </div>
-                        <span className="text-[11px] text-gdpro-text-muted text-center line-clamp-2">{isParsing ? '解析中...' : ref.name}</span>
+                        <span className="text-[11px] text-gdpro-text-muted text-center line-clamp-2">{isParsing ? copy.parsing : ref.name}</span>
                       </div>
                     )}
                     {hasParsed && (
                       <div className="absolute top-2 left-2 px-1.5 py-[1px] rounded bg-gdpro-success/20 text-gdpro-success text-[10px] font-bold backdrop-blur-sm flex items-center gap-1">
                         <FileText className="w-2.5 h-2.5" strokeWidth={2} />
-                        已解析
+                        {copy.parsed}
                       </div>
                     )}
                     {parseError && (
                       <div className="absolute top-2 left-2 px-1.5 py-[1px] rounded bg-gdpro-danger/20 text-gdpro-danger text-[10px] font-bold backdrop-blur-sm">
-                        解析失败
+                        {copy.parseError}
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
-                      {isImage && !isParsing && (
-                        <button onClick={(e) => { e.stopPropagation(); setPreviewRef(ref); }} className="p-1.5 rounded-md bg-gdpro-bg/80 text-gdpro-text hover:text-gdpro-accent transition-colors">
+                    <div className="absolute inset-0 bg-gdpro-bg-elevated/78 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 backdrop-blur-sm">
+                      {!isParsing && (
+                        <button onClick={(e) => { e.stopPropagation(); setPreviewRef(ref); }} className="p-1.5 rounded-md bg-white/90 border border-gdpro-border text-gdpro-text hover:text-gdpro-accent transition-colors">
                           <Eye className="w-3.5 h-3.5" strokeWidth={2} />
                         </button>
                       )}
-                      <button onClick={(e) => { e.stopPropagation(); deleteRef(ref.id); }} className="p-1.5 rounded-md bg-gdpro-bg/80 text-gdpro-text hover:text-gdpro-danger transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
-                      </button>
+                      {!ref.builtin && (
+                        <button onClick={(e) => { e.stopPropagation(); deleteRef(ref.id); }} className="p-1.5 rounded-md bg-white/90 border border-gdpro-border text-gdpro-text hover:text-gdpro-danger transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="p-2.5 flex-1 flex flex-col">
@@ -241,12 +291,18 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
                     )}
                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-gdpro-border/50">
                       <span className="text-[10px] text-gdpro-text-muted">{ref.projectName}</span>
-                      <select value={ref.category} onChange={(e) => changeCategory(ref.id, e.target.value)}
-                        className="text-[10px] bg-gdpro-bg-hover border border-gdpro-border rounded px-1.5 py-[1px] text-gdpro-text-muted outline-none focus:border-gdpro-info">
-                        {REF_CATEGORIES.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
+                      {ref.builtin ? (
+                        <span className="text-[10px] rounded border border-gdpro-border bg-gdpro-bg-hover px-1.5 py-[1px] text-gdpro-text-muted">
+                          {copy.categories?.[ref.category] || catInfo?.name || copy.categories?.guideline}
+                        </span>
+                      ) : (
+                        <select value={ref.category} onChange={(e) => changeCategory(ref.id, e.target.value)}
+                          className="text-[10px] bg-gdpro-bg-hover border border-gdpro-border rounded px-1.5 py-[1px] text-gdpro-text-muted outline-none focus:border-gdpro-info">
+                          {REF_CATEGORIES.map((c) => (
+                            <option key={c.id} value={c.id}>{copy.categories?.[c.id] || c.name}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -257,13 +313,43 @@ export default function ReferenceLibrary({ projects, onReferencesChange }) {
       </div>
 
       {previewRef && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in p-4" onClick={() => setPreviewRef(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center gdpro-modal-backdrop animate-fade-in p-4" onClick={() => setPreviewRef(null)}>
           <div className="max-w-[85vw] max-h-[85vh] relative" onClick={(e) => e.stopPropagation()}>
-            <img src={previewRef.previewUrl || previewRef.url} alt={previewRef.name} className="max-w-full max-h-[80vh] object-contain rounded-[10px] shadow-2xl" />
-            <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent rounded-b-[10px]">
-              <p className="text-[13px] text-white font-medium">{previewRef.name}</p>
-              <p className="text-[10px] text-white/60">{previewRef.projectName}</p>
-            </div>
+            {(previewRef.type === 'image' || previewRef.type === 'svg') ? (
+              <div className="gdpro-modal-shell rounded-xl p-2">
+                <img src={previewRef.previewUrl || previewRef.url} alt={previewRef.name} className="max-w-full max-h-[72vh] object-contain rounded-[10px]" />
+                <div className="px-2 py-2">
+                  <p className="text-[13px] text-gdpro-text font-medium">{previewRef.name}</p>
+                  <p className="text-[10px] text-gdpro-text-muted">{previewRef.projectName}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="w-[min(760px,85vw)] max-h-[80vh] overflow-y-auto rounded-lg gdpro-modal-shell p-5">
+                <div className="flex items-start gap-3 pb-3 border-b border-gdpro-border">
+                  <div className="w-9 h-9 rounded-lg bg-gdpro-accent/10 border border-gdpro-accent/20 flex items-center justify-center text-gdpro-accent">
+                    <BookOpen className="w-4 h-4" strokeWidth={1.8} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-[15px] font-semibold text-gdpro-text">{previewRef.name}</h3>
+                    <p className="text-[11px] text-gdpro-text-muted mt-0.5">{previewRef.parsed?.excerpt || previewRef.projectName}</p>
+                  </div>
+                </div>
+                {previewRef.parsed?.sections?.length ? (
+                  <div className="mt-4 space-y-5">
+                    {previewRef.parsed.sections.map((section) => (
+                      <section key={section.title}>
+                        <h4 className="text-[12px] font-semibold text-gdpro-text mb-2">{section.title}</h4>
+                        <p className="whitespace-pre-wrap text-[12px] leading-6 text-gdpro-text-secondary">{section.content}</p>
+                      </section>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 whitespace-pre-wrap text-[12px] leading-6 text-gdpro-text-secondary">
+                    {previewRef.parsed?.content || previewRef.parsed?.excerpt || copy.noContent}
+                  </div>
+                )}
+              </div>
+            )}
             <button onClick={() => setPreviewRef(null)} className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gdpro-bg-elevated border border-gdpro-border flex items-center justify-center text-gdpro-text hover:text-gdpro-danger transition-colors">
               <X className="w-3 h-3" strokeWidth={2} />
             </button>

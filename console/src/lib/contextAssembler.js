@@ -1,6 +1,6 @@
 import { loadFromLocal } from './storage';
 import { buildPhaseGuardPrompt } from './phaseGuard';
-import { openclaw } from './api';
+import { buildDesignControlPrompt, buildDesignControlState } from './designControl';
 
 /**
  * Mapping from Console dimension keys to Skill aesthetic archive dimension names.
@@ -95,7 +95,41 @@ function buildBrandProfileSection(project) {
   return '';
 }
 
-export function buildSystemPrompt({ profile, references, assets, project, assetMentions } = {}) {
+function localizedRouteText(value, language = 'zh') {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value[language] || value.zh || value.en || '';
+}
+
+function buildImageModelRouteSection(imageModelConfig) {
+  if (!imageModelConfig) return '';
+  const capabilities = imageModelConfig.capabilities || {};
+  const route = imageModelConfig.deliveryRoute || {};
+  const outputs = (capabilities.outputs || [])
+    .map((item) => localizedRouteText(item, 'zh'))
+    .filter(Boolean)
+    .join('、') || '未声明';
+  const strengths = (capabilities.strengths || [])
+    .map((item) => localizedRouteText(item, 'zh'))
+    .filter(Boolean)
+    .join('、') || '未声明';
+  const handoffRule = localizedRouteText(route.finalAssetRule || capabilities.handoffRule, 'zh');
+  const deliveryMode = route.finalDeliveryAllowed ? '可进入源稿候选' : '只可作为概念或预览';
+  const lines = ['## 图像服务生产边界'];
+  lines.push(`- 当前图像服务：${imageModelConfig.displayName || imageModelConfig.id || '未选择'} / ${imageModelConfig.provider || '未知服务商'}`);
+  lines.push(`- 主要用途：${strengths}`);
+  lines.push(`- 输出格式：${outputs}`);
+  lines.push(`- 交付路由：${deliveryMode}`);
+  if (handoffRule) lines.push(`- 交付规则：${handoffRule}`);
+  if (!route.finalDeliveryAllowed) {
+    lines.push('- 严格要求：不得把一次性位图结果当作最终 Logo、VI 手册、印刷稿或可编辑源文件交付。采纳后必须重建为 SVG/AI/PSD/版式源稿，并通过品牌套件、源稿质量和交付包检查。');
+  } else {
+    lines.push('- 严格要求：即使服务可输出矢量，也只能先作为源稿候选。交付前仍要检查路径、色值、字体、版权和品牌套件一致性。');
+  }
+  return lines.join('\n');
+}
+
+export function buildSystemPrompt({ profile, references, assets, project, assetMentions, imageModelConfig } = {}) {
   const p = profile || loadFromLocal('designer_profile', {});
   const apPrefs = buildAPPreferences(p);
   const apProhibs = buildAPProhibitions(p);
@@ -182,11 +216,18 @@ export function buildSystemPrompt({ profile, references, assets, project, assetM
   // ── 3.6 Phase Guard Context ──
   if (project) {
     parts.push(buildPhaseGuardPrompt(project.currentPhase || 1));
+    const controlState = buildDesignControlState(project);
+    parts.push(buildDesignControlPrompt(project, controlState));
+  }
+
+  const imageModelRouteSection = buildImageModelRouteSection(imageModelConfig);
+  if (imageModelRouteSection) {
+    parts.push(imageModelRouteSection);
   }
 
   // ── 4. Project Phase Context ──
   if (project) {
-    const phaseNames = ['需求追问', '竞品分析', '样稿生成', '物料扩展', '合规审查', '落地交付'];
+    const phaseNames = ['需求追问', '竞品分析', '样稿方向', '物料扩展', '合规审查', '落地交付'];
     const phase = project.currentPhase || 1;
     parts.push(`## 📍 项目状态\n- 项目名称：${project.name}\n- 当前阶段：${phaseNames[phase - 1] || '未知'}（第 ${phase} 阶段）`);
   }
@@ -194,11 +235,12 @@ export function buildSystemPrompt({ profile, references, assets, project, assetM
   // ── 5. Instruction footer ──
   parts.push(
     '## ⚡ 执行指令\n' +
-    '1. 以上「🎨 设计师档案」是你的**最高优先级**执行参照，所有输出必须严格符合档案中的审美偏好和禁止项。\n' +
-    '2. 审美偏好按 AP 编号追溯，新增偏好不得与已有 AP 冲突。\n' +
-    '3. 主动引用知识库中与用户需求相关的参考资料。\n' +
-    '4. 保持与已采纳资产的风格一致性。\n' +
-    '5. 每次回复末尾提供可操作的按钮：采纳(✓)、拒绝(✕)、修改(✎)。'
+    '1. Design Control Protocol 与 Phase 阶段守卫是当前工作流控制层；如与普通创意建议冲突，优先遵守控制层。\n' +
+    '2. 以上「🎨 设计师档案」是你的审美执行参照，所有输出必须符合档案中的审美偏好和禁止项。\n' +
+    '3. 审美偏好按 AP 编号追溯，新增偏好不得与已有 AP 冲突。\n' +
+    '4. 主动引用知识库中与用户需求相关的参考资料。\n' +
+    '5. 保持与已采纳资产的风格一致性；缺少锁定项时先补齐，不要用想象替代。\n' +
+    '6. 每次回复末尾提供可操作的按钮：采纳(✓)、拒绝(✕)、修改(✎)。'
   );
 
   return parts.join('\n\n---\n\n');
@@ -207,7 +249,7 @@ export function buildSystemPrompt({ profile, references, assets, project, assetM
 /**
  * Build a human-readable summary of what context was loaded.
  */
-export function buildContextSummary({ profile, references, assets, project, assetMentions } = {}) {
+export function buildContextSummary({ profile, references, assets, project, assetMentions, imageModelConfig } = {}) {
   const p = profile || loadFromLocal('designer_profile', {});
   const apPrefs = buildAPPreferences(p);
   const apProhibs = buildAPProhibitions(p);
@@ -232,6 +274,11 @@ export function buildContextSummary({ profile, references, assets, project, asse
 
   lines.push(`• 知识库 — ${parsedCount} 份已解析参考资料可用`);
   lines.push(`• 项目资产 — ${adoptedCount} 个已采纳设计资产`);
+  if (imageModelConfig) {
+    const route = imageModelConfig.deliveryRoute || {};
+    const mode = route.finalDeliveryAllowed ? '源稿候选' : '概念预览';
+    lines.push(`• 图像服务 — ${imageModelConfig.displayName || imageModelConfig.id || '未选择'} · ${mode}`);
+  }
 
   const mentions = assetMentions || [];
   if (mentions.length) {
@@ -239,8 +286,44 @@ export function buildContextSummary({ profile, references, assets, project, asse
   }
 
   if (project) {
-    const phaseNames = ['需求追问', '竞品分析', '样稿生成', '物料扩展', '合规审查', '落地交付'];
+    const phaseNames = ['需求追问', '竞品分析', '样稿方向', '物料扩展', '合规审查', '落地交付'];
     lines.push(`• 当前阶段 — ${project.name} / ${phaseNames[project.currentPhase - 1] || '未知'}`);
+    const controlState = buildDesignControlState(project);
+    lines.push(`• 控制面 — 生产就绪度 ${controlState.readiness}% · ${controlState.outputPath.label} · ${controlState.riskLevel}`);
+    if (controlState.manifest) {
+      lines.push(`• 品牌资产清单 — ${controlState.manifest.status} · ${controlState.manifest.readyItemCount}/${controlState.manifest.requiredItemCount} 必需项 · ${controlState.manifest.items.length} 可引用项`);
+    }
+    if (controlState.materialPlan) {
+      lines.push(`• 物料生产 — ${controlState.materialPlan.status} · ${controlState.materialPlan.stats.total} 个物料 · ${controlState.materialPlan.stats.sourceArtworks || 0} 个源稿 · ${controlState.materialPlan.stats.sourceQaPassed || 0} 个源稿检查通过 · ${controlState.materialPlan.readiness}%`);
+    }
+    if (controlState.preflightReview) {
+      lines.push(`• 交付前检查 — ${controlState.preflightReview.status} · ${controlState.preflightReview.readiness}% · ${controlState.preflightReview.issues.length} 个问题`);
+    }
+    if (controlState.deliveryPackage) {
+      lines.push(`• 交付包 — ${controlState.deliveryPackage.status} · ${controlState.deliveryPackage.readiness}% · ${controlState.deliveryPackage.stats.readyEntries}/${controlState.deliveryPackage.stats.entries} 项就绪`);
+    }
+    if (controlState.repairQueue) {
+      lines.push(`• 修复队列 — ${controlState.repairQueue.status} · ${controlState.repairQueue.stats.open} 个待处理 · ${controlState.repairQueue.stats.safe} 个安全操作`);
+    }
+    if (controlState.designBriefContract) {
+      lines.push(`• 需求约定书 — ${controlState.designBriefContract.status} · ${controlState.designBriefContract.readiness}% · ${controlState.designBriefContract.targets.length} 个目标物料`);
+    }
+    if (controlState.brandConsistencyKit) {
+      lines.push(`• 品牌套件一致性 — ${controlState.brandConsistencyKit.statusLabel} · ${controlState.brandConsistencyKit.readiness}% · 矢量源稿 ${controlState.brandConsistencyKit.stats.sourceSvgReady}/${controlState.brandConsistencyKit.stats.materials}`);
+    }
+    if (controlState.designScorecard) {
+      lines.push(`• 设计总监评分 — ${controlState.designScorecard.status} · ${controlState.designScorecard.score}/${controlState.designScorecard.threshold} · ${controlState.designScorecard.grade}`);
+    }
+    if (controlState.productionImpact) {
+      lines.push(`• 生产影响范围 — ${controlState.productionImpact.status} · ${controlState.productionImpact.stats.total} 个影响 · ${controlState.productionImpact.stats.safe} 个安全操作`);
+    }
+    if (controlState.reviewBoard) {
+      lines.push(`• 签收看板 — ${controlState.reviewBoard.status} · ${controlState.reviewBoard.stats.approved}/${controlState.reviewBoard.stats.total} 已签核 · ${controlState.reviewBoard.stats.blocked} 阻断`);
+    }
+    if (controlState.operationResults?.length) {
+      const latest = controlState.operationResults[0];
+      lines.push(`• 最近工作台操作 — ${latest.label || latest.operationType} / ${latest.status}`);
+    }
   }
 
   return lines.join('\n');

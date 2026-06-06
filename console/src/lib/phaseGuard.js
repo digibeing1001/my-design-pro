@@ -1,7 +1,7 @@
-// Phase Gate / Guard system for Console v3
+// Phase gate rules for the studio workflow.
 // Enforces the 6-Phase workflow: users cannot skip phases or perform out-of-phase operations.
 
-export const PHASE_NAMES = ['需求追问', '竞品分析', '样稿生成', '物料扩展', '合规审查', '落地交付'];
+export const PHASE_NAMES = ['需求追问', '竞品分析', '样稿方向', '物料扩展', '合规审查', '落地交付'];
 
 export const PHASE_CONFIG = {
   1: {
@@ -21,18 +21,18 @@ export const PHASE_CONFIG = {
     canGenerateImage: false,
     canAdoptAsset: false,
     canProceed: true,
-    gateLabel: '确认设计哲学后进入样稿生成',
-    quickActions: ['分析竞品视觉策略', '创建设计哲学', '生成 Moodboard'],
+    gateLabel: '确认设计哲学后进入样稿方向',
+    quickActions: ['分析竞品视觉策略', '创建设计哲学', '整理 Moodboard'],
   },
   3: {
-    name: '样稿生成',
-    description: 'Logo + 样稿 + 辅助图形生成',
+    name: '样稿方向',
+    description: 'Logo + 样稿 + 辅助图形创建',
     allowedAssetCategories: ['logo', 'draft', 'reference'],
     canGenerateImage: true,
     canAdoptAsset: true,
     canProceed: true,
     gateLabel: '确认样稿后进入物料扩展',
-    quickActions: ['生成 Logo 方案', '设计品牌样稿', '评审当前样稿'],
+    quickActions: ['起草 Logo 方向', '创建品牌样稿', '审阅当前样稿'],
   },
   4: {
     name: '物料扩展',
@@ -52,7 +52,7 @@ export const PHASE_CONFIG = {
     canAdoptAsset: true,
     canProceed: true,
     gateLabel: '审查通过后进入落地交付',
-    quickActions: ['运行合规审查', '审美自检清单', '检查字体版权'],
+    quickActions: ['开始合规审查', '审美自检清单', '检查字体版权'],
   },
   6: {
     name: '落地交付',
@@ -62,7 +62,7 @@ export const PHASE_CONFIG = {
     canAdoptAsset: true,
     canProceed: false,
     gateLabel: '项目已完成',
-    quickActions: ['生成 VI 规范手册', '导出印刷文件', '项目归档'],
+    quickActions: ['制作 VI 规范手册', '导出印刷文件', '项目归档'],
   },
 };
 
@@ -129,7 +129,7 @@ export function buildPhaseGuardPrompt(phase) {
     ``,
     `**本阶段允许的操作**：`,
     `- 可上传资产类别：${cfg.allowedAssetCategories.join('、')}`,
-    `- ${cfg.canGenerateImage ? '✅' : '❌'} AI 生图`,
+    `- ${cfg.canGenerateImage ? '✅' : '❌'} 概念图创建`,
     `- ${cfg.canAdoptAsset ? '✅' : '❌'} 采纳资产`,
     ``,
     `**阶段说明**：${cfg.description}`,

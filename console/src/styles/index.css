@@ -1,29 +1,30 @@
 @import "tailwindcss";
 
 @theme {
-  /* Apple-style Glassmorphism with Blue-Green gradient theme */
-  --color-gdpro-bg: transparent;
-  --color-gdpro-bg-sidebar: rgba(255, 255, 255, 0.04);
-  --color-gdpro-bg-elevated: rgba(255, 255, 255, 0.06);
-  --color-gdpro-bg-surface: rgba(255, 255, 255, 0.08);
-  --color-gdpro-bg-hover: rgba(255, 255, 255, 0.12);
-  --color-gdpro-bg-active: rgba(45, 212, 191, 0.25);
+  /* Bright design-tool studio: Figma/Canva clarity with a restrained VI accent. */
+  --color-gdpro-bg: #FFFFFF;
+  --color-gdpro-bg-sidebar: #FFFFFF;
+  --color-gdpro-bg-elevated: #FFFFFF;
+  --color-gdpro-bg-surface: #F7F9FB;
+  --color-gdpro-bg-hover: #F0F4F7;
+  --color-gdpro-bg-active: rgba(14, 165, 164, 0.1);
 
-  --color-gdpro-border: rgba(255, 255, 255, 0.08);
-  --color-gdpro-border-light: rgba(255, 255, 255, 0.14);
-  --color-gdpro-border-focus: rgba(45, 212, 191, 0.4);
+  --color-gdpro-border: rgba(20, 35, 50, 0.085);
+  --color-gdpro-border-light: rgba(20, 35, 50, 0.145);
+  --color-gdpro-border-focus: rgba(14, 165, 164, 0.48);
 
-  --color-gdpro-text: #F0F4F8;
-  --color-gdpro-text-secondary: #A3B3C2;
-  --color-gdpro-text-muted: #6B7F94;
+  --color-gdpro-text: #111827;
+  --color-gdpro-text-secondary: #3B4B5F;
+  --color-gdpro-text-muted: #718096;
 
-  --color-gdpro-accent: #2DD4BF;
-  --color-gdpro-accent-hover: #5EEAD4;
-  --color-gdpro-accent-dim: rgba(45, 212, 191, 0.15);
+  --color-gdpro-accent: #0EA5A4;
+  --color-gdpro-accent-hover: #12B8B4;
+  --color-gdpro-accent-dim: rgba(14, 165, 164, 0.1);
 
-  --color-gdpro-danger: #F87171;
-  --color-gdpro-success: #34D399;
-  --color-gdpro-info: #38BDF8;
+  --color-gdpro-danger: #D84A4A;
+  --color-gdpro-success: #24A160;
+  --color-gdpro-info: #4E74D8;
+  --color-gdpro-warning: #B7791F;
 
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', 'Noto Sans SC', sans-serif;
   --font-mono: 'SF Mono', 'SFMono-Regular', 'JetBrains Mono', monospace;
@@ -59,19 +60,53 @@
 
 @layer base {
   html {
-    background-color: #0B1220;
+    background-color: #FFFFFF;
     color: var(--color-gdpro-text);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    letter-spacing: -0.011em;
+    letter-spacing: 0;
   }
 
   body {
     overflow: hidden;
-    background: linear-gradient(135deg, #0B1220 0%, #0A2E38 30%, #0D3B32 60%, #0B1F2E 100%);
-    background-size: 200% 200%;
-    animation: gradientShift 15s ease infinite;
+    background-color: #FFFFFF;
+    background-image:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(250, 252, 254, 0.96) 64%, rgba(247, 250, 252, 0.94)),
+      linear-gradient(rgba(20, 35, 50, 0.01) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(20, 35, 50, 0.008) 1px, transparent 1px);
+    background-size: 100% 100%, 32px 32px, 32px 32px;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2147483647;
+    opacity: 0.025;
+    background-image:
+      repeating-linear-gradient(90deg, rgba(20, 35, 50, 0.018) 0 1px, transparent 1px 5px),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.7) 0 1px, transparent 1px 5px);
+  }
+
+  h1,
+  h2,
+  h3,
+  button,
+  label {
+    text-wrap: balance;
+  }
+
+  p,
+  li,
+  figcaption {
+    text-wrap: pretty;
+  }
+
+  img {
+    outline: 1px solid rgba(17, 24, 39, 0.1);
+    outline-offset: -1px;
   }
 
   ::-webkit-scrollbar {
@@ -84,12 +119,12 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(24, 35, 48, 0.18);
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.22);
+    background: rgba(24, 35, 48, 0.28);
   }
 
   ::selection {
@@ -107,36 +142,196 @@
 }
 
 @layer components {
-  /* Apple-style Glassmorphism Card */
+  .gdpro-topbar {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(251, 252, 254, 0.96)),
+      rgba(255, 255, 255, 0.9);
+    border-bottom: 1px solid rgba(20, 35, 50, 0.09);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.95) inset,
+      0 8px 24px rgba(20, 35, 50, 0.04);
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+  }
+
+  .gdpro-sidebar-shell {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(250, 252, 254, 0.98));
+    border-right: 1px solid rgba(20, 35, 50, 0.08);
+    box-shadow:
+      1px 0 0 rgba(255, 255, 255, 0.9) inset,
+      14px 0 30px rgba(20, 35, 50, 0.025);
+    backdrop-filter: blur(18px) saturate(125%);
+    -webkit-backdrop-filter: blur(18px) saturate(125%);
+  }
+
+  .gdpro-icon-mark {
+    background:
+      radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.88), transparent 16px),
+      linear-gradient(145deg, rgba(76, 221, 207, 0.98), rgba(18, 184, 180, 0.98) 52%, rgba(13, 139, 136, 0.98)),
+      var(--color-gdpro-accent);
+    box-shadow:
+      0 8px 18px rgba(14, 116, 144, 0.13),
+      0 6px 18px rgba(14, 165, 164, 0.18),
+      0 1px 0 rgba(255, 255, 255, 0.65) inset,
+      0 -1px 0 rgba(7, 89, 87, 0.22) inset;
+  }
+
+  .gdpro-project-chip {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.95));
+    border: 1px solid rgba(24, 35, 48, 0.12);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 1px 2px rgba(24, 35, 48, 0.07);
+  }
+
+  .gdpro-language-switch {
+    align-items: center;
+    gap: 3px;
+    height: 32px;
+    padding: 3px;
+    border-radius: 10px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 246, 249, 0.95));
+    border: 1px solid rgba(24, 35, 48, 0.12);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.92) inset,
+      0 1px 2px rgba(24, 35, 48, 0.07);
+  }
+
+  .gdpro-language-switch button {
+    min-width: 28px;
+    height: 24px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--color-gdpro-text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    transition-property: background-color, color, box-shadow, transform;
+    transition-duration: 140ms;
+    transition-timing-function: ease-out;
+  }
+
+  .gdpro-language-switch button:hover {
+    color: var(--color-gdpro-text);
+    background: rgba(24, 35, 48, 0.05);
+  }
+
+  .gdpro-language-switch button:active {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  .gdpro-language-switch-active {
+    color: var(--color-gdpro-accent) !important;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(231, 248, 244, 0.96)) !important;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.88) inset,
+      0 4px 12px rgba(15, 159, 142, 0.14);
+  }
+
+  .gdpro-modal-shell {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(249, 251, 253, 0.99));
+    border: 1px solid rgba(20, 35, 50, 0.12);
+    box-shadow:
+      0 30px 82px rgba(20, 35, 50, 0.16),
+      0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  }
+
+  .gdpro-modal-backdrop {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(242, 247, 251, 0.72));
+    backdrop-filter: blur(18px) saturate(118%);
+    -webkit-backdrop-filter: blur(18px) saturate(118%);
+  }
+
+  .gdpro-tool-icon {
+    @apply inline-flex items-center justify-center rounded-lg text-gdpro-text-muted
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-gdpro-accent;
+    min-width: 32px;
+    min-height: 32px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 251, 253, 0.98));
+    border: 1px solid rgba(20, 35, 50, 0.1);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.96) inset,
+      0 1px 2px rgba(20, 35, 50, 0.055);
+    transition-property: background-color, border-color, color, transform, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+  }
+  .gdpro-tool-icon:hover {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(241, 247, 251, 0.98));
+    border-color: rgba(20, 35, 50, 0.16);
+    color: var(--color-gdpro-text);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.95) inset,
+      0 8px 18px rgba(20, 35, 50, 0.08);
+  }
+  .gdpro-tool-icon:active {
+    transform: translateY(1px) scale(0.98);
+    box-shadow:
+      0 1px 3px rgba(20, 35, 50, 0.12) inset,
+      0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+  .gdpro-tool-icon:disabled {
+    opacity: 0.34;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Production card */
   .gdpro-card {
-    @apply bg-white/[0.05] border border-white/[0.08] rounded-[14px];
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    @apply border border-gdpro-border rounded-lg;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(250, 252, 254, 0.99)),
+      var(--color-gdpro-bg-elevated);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.96) inset,
+      0 10px 24px rgba(20, 35, 50, 0.055);
   }
 
   .gdpro-card-hover {
-    @apply transition-all duration-200;
+    transition-property: background-color, border-color, box-shadow, transform;
+    transition-duration: 180ms;
+    transition-timing-function: ease-out;
   }
   .gdpro-card-hover:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.14);
+    background: #FFFFFF;
+    border-color: var(--color-gdpro-border-light);
   }
 
-  /* Glass Button — Primary */
+  /* Button — Primary */
   .gdpro-button {
-    @apply px-4 py-1.5 text-[13px] font-semibold rounded-xl text-[#0B1220]
-           transition-all duration-200;
-    background: linear-gradient(135deg, #2DD4BF 0%, #34D399 100%);
-    box-shadow: 0 2px 8px rgba(45, 212, 191, 0.25), inset 0 1px 0 rgba(255,255,255,0.25);
+    @apply px-4 py-1.5 text-[13px] font-semibold rounded-lg text-white;
+    min-height: 32px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.18) 26%, transparent 27%),
+      linear-gradient(180deg, var(--color-gdpro-accent-hover), var(--color-gdpro-accent) 64%, #0B8E8B);
+    border: 1px solid rgba(64, 224, 208, 0.28);
+    box-shadow:
+      0 10px 22px rgba(14, 116, 144, 0.11),
+      0 8px 22px rgba(14, 165, 164, 0.15),
+      0 1px 0 rgba(255, 255, 255, 0.55) inset,
+      0 -1px 0 rgba(7, 89, 87, 0.22) inset;
+    transition-property: filter, transform, box-shadow, opacity;
+    transition-duration: 160ms;
+    transition-timing-function: ease-out;
   }
   .gdpro-button:hover {
-    background: linear-gradient(135deg, #5EEAD4 0%, #6EE7B7 100%);
-    box-shadow: 0 4px 14px rgba(45, 212, 191, 0.35), inset 0 1px 0 rgba(255,255,255,0.3);
-    transform: translateY(-0.5px);
+    filter: brightness(1.06) saturate(1.03);
   }
   .gdpro-button:active {
-    transform: translateY(0px);
-    box-shadow: 0 1px 4px rgba(45, 212, 191, 0.2);
+    transform: translateY(1px) scale(0.985);
+    box-shadow:
+      0 2px 8px rgba(7, 89, 87, 0.18),
+      0 2px 8px rgba(14, 165, 164, 0.14),
+      0 2px 5px rgba(7, 89, 87, 0.22) inset;
   }
   .gdpro-button:disabled {
     opacity: 0.4;
@@ -145,120 +340,292 @@
     box-shadow: none;
   }
 
-  /* Glass Button — Secondary */
+  /* Button — Secondary */
   .gdpro-button-secondary {
-    @apply px-4 py-1.5 text-[13px] font-medium rounded-xl text-gdpro-text
-           transition-all duration-200;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    @apply px-4 py-1.5 text-[13px] font-medium rounded-lg text-gdpro-text;
+    min-height: 32px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(249, 251, 253, 0.98)),
+      var(--color-gdpro-bg-elevated);
+    border: 1px solid var(--color-gdpro-border);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.95) inset,
+      0 2px 7px rgba(20, 35, 50, 0.055);
+    transition-property: background-color, border-color, color, transform, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
   }
   .gdpro-button-secondary:hover {
-    background: rgba(255, 255, 255, 0.14);
-    border-color: rgba(255, 255, 255, 0.18);
-    transform: translateY(-0.5px);
+    background: #FFFFFF;
+    border-color: var(--color-gdpro-border-light);
   }
   .gdpro-button-secondary:active {
-    transform: translateY(0px);
-    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(1px);
+    background: rgba(241, 247, 251, 0.92);
+    box-shadow: 0 2px 5px rgba(20, 35, 50, 0.1) inset;
   }
 
-  /* Glass Input */
+  /* Input */
   .gdpro-input {
-    @apply w-full px-3 py-2 text-gdpro-text text-[13px] rounded-xl
+    @apply w-full px-3 py-2 text-gdpro-text text-[13px] rounded-lg
            placeholder:text-gdpro-text-muted/60
-           focus:outline-none transition-all duration-200;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+           focus:outline-none;
+    background:
+      linear-gradient(180deg, rgba(20, 35, 50, 0.012), rgba(255, 255, 255, 0.92)),
+      #FFFFFF;
+    border: 1px solid var(--color-gdpro-border);
+    box-shadow:
+      0 1px 3px rgba(20, 35, 50, 0.055) inset,
+      0 1px 0 rgba(255, 255, 255, 0.82);
+    transition-property: background-color, border-color, box-shadow;
+    transition-duration: 180ms;
+    transition-timing-function: ease-out;
   }
   .gdpro-input:focus {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(45, 212, 191, 0.4);
-    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.1);
+    background:
+      linear-gradient(180deg, rgba(15, 159, 142, 0.035), rgba(255, 255, 255, 0.94)),
+      #FFFFFF;
+    border-color: var(--color-gdpro-border-focus);
+    box-shadow:
+      0 0 0 3px rgba(24, 167, 139, 0.12),
+      0 1px 4px rgba(20, 35, 50, 0.055) inset,
+      0 1px 0 rgba(255, 255, 255, 0.9);
   }
 
   .gdpro-label {
-    @apply block text-[11px] font-semibold text-gdpro-text-secondary uppercase tracking-wider mb-1.5;
+    @apply block text-[11px] font-semibold text-gdpro-text-secondary mb-1.5;
+    letter-spacing: 0;
   }
 
   .gdpro-badge {
-    @apply inline-flex items-center px-2 py-0.5 text-[11px] font-semibold rounded-lg
+    @apply inline-flex items-center px-2 py-0.5 text-[11px] font-semibold rounded-md
            bg-gdpro-accent-dim text-gdpro-accent;
-    border: 1px solid rgba(45, 212, 191, 0.15);
+    border: 1px solid rgba(22, 160, 133, 0.24);
   }
 
   /* macOS-style Toolbar Button */
   .mac-toolbar-btn {
-    @apply px-2.5 py-1 text-[12px] font-medium rounded-lg text-gdpro-text-secondary
-           transition-all duration-200 hover:text-gdpro-text;
+    @apply px-2.5 py-1 text-[12px] font-medium rounded-lg text-gdpro-text-secondary hover:text-gdpro-text;
     background: transparent;
+    transition-property: background-color, color, transform;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
   }
   .mac-toolbar-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(244, 249, 252, 0.96)),
+      var(--color-gdpro-bg-hover);
   }
   .mac-toolbar-btn:active {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(241, 247, 251, 0.82);
+    transform: translateY(1px);
   }
 
   /* Sidebar Navigation Item */
   .mac-sidebar-item {
-    @apply w-full flex items-center gap-2.5 px-2.5 py-[6px] rounded-xl text-left
-           text-[13px] text-gdpro-text-secondary transition-all duration-150;
+    @apply w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-left
+           text-[13px] text-gdpro-text-secondary;
     background: transparent;
+    border: 1px solid transparent;
+    box-shadow: none;
+    transition-property: background-color, border-color, color, transform, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
   }
   .mac-sidebar-item:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(244, 249, 252, 0.96));
+    border-color: rgba(20, 35, 50, 0.08);
     color: var(--color-gdpro-text);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.95) inset,
+      0 1px 3px rgba(20, 35, 50, 0.045);
   }
 
   .mac-sidebar-item-active {
-    background: linear-gradient(135deg, rgba(45, 212, 191, 0.2) 0%, rgba(56, 189, 248, 0.15) 100%) !important;
-    color: #5EEAD4 !important;
-    border: 1px solid rgba(45, 212, 191, 0.2);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(235, 250, 248, 0.96)),
+      linear-gradient(90deg, rgba(14, 165, 164, 0.14), rgba(14, 165, 164, 0.035)) !important;
+    color: var(--color-gdpro-accent-hover) !important;
+    border: 1px solid rgba(14, 165, 164, 0.24);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.92) inset,
+      0 7px 16px rgba(14, 116, 144, 0.055);
   }
 
-  /* Glass Menu */
+  /* Menu */
   .mac-menu {
-    @apply absolute z-50 rounded-[14px] shadow-2xl overflow-hidden animate-scale-in;
-    background: rgba(15, 25, 40, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255,255,255,0.05);
+    @apply absolute z-50 rounded-lg shadow-2xl overflow-hidden animate-scale-in;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(247, 249, 251, 0.98));
+    border: 1px solid var(--color-gdpro-border-light);
+    box-shadow:
+      0 22px 48px rgba(20, 35, 50, 0.13),
+      0 1px 0 rgba(255, 255, 255, 0.94) inset;
   }
 
   .mac-menu-item {
     @apply w-full text-left px-3 py-[7px] text-[13px] text-gdpro-text
-           transition-colors duration-100 flex items-center gap-2;
+           flex items-center gap-2;
+    transition-property: background-color, color;
+    transition-duration: 120ms;
+    transition-timing-function: ease-out;
   }
   .mac-menu-item:hover {
-    background: rgba(45, 212, 191, 0.15);
-    color: #5EEAD4;
+    background: rgba(14, 165, 164, 0.1);
+    color: var(--color-gdpro-accent-hover);
   }
 
   .mac-divider {
     @apply h-px my-1 mx-2;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--color-gdpro-border);
   }
 
   /* Segmented Control */
   .mac-segment {
     @apply flex p-[2px] rounded-lg;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(20, 35, 50, 0.045), rgba(255, 255, 255, 0.82)),
+      #F2F6FA;
+    border: 1px solid var(--color-gdpro-border);
+    box-shadow:
+      0 1px 3px rgba(20, 35, 50, 0.08) inset,
+      0 1px 0 rgba(255, 255, 255, 0.86);
   }
 
   .mac-segment-btn {
-    @apply flex-1 py-[4px] px-2 text-[11px] font-medium rounded-md text-gdpro-text-secondary
-           transition-all duration-150;
+    @apply flex-1 py-[4px] px-2 text-[11px] font-medium rounded-md text-gdpro-text-secondary;
+    transition-property: background-color, color, box-shadow, transform;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
   }
 
   .mac-segment-btn-active {
     @apply text-gdpro-text shadow-sm;
-    background: rgba(255, 255, 255, 0.12);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(247, 249, 251, 0.98));
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.96) inset,
+      0 1px 5px rgba(20, 35, 50, 0.07);
+  }
+
+  .gdpro-chrome-panel {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(249, 251, 253, 0.98)),
+      var(--color-gdpro-bg-elevated);
+    border-color: rgba(20, 35, 50, 0.1);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.92) inset,
+      0 1px 0 rgba(20, 35, 50, 0.04);
+  }
+
+  .gdpro-surface-tile {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(250, 252, 254, 0.98)),
+      var(--color-gdpro-bg-elevated);
+    border: 1px solid var(--color-gdpro-border);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 1px 3px rgba(20, 35, 50, 0.05);
+  }
+
+  .gdpro-status-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(250, 252, 254, 0.98));
+    border: 1px solid rgba(20, 35, 50, 0.08);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.92) inset,
+      0 6px 14px rgba(20, 35, 50, 0.035);
+  }
+
+  .gdpro-canvas-surface {
+    background-color: #F8FAFC;
+    background-image:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 251, 253, 0.94)),
+      linear-gradient(rgba(20, 35, 50, 0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(20, 35, 50, 0.018) 1px, transparent 1px);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.95) inset,
+      12px 0 28px rgba(20, 35, 50, 0.012) inset;
+  }
+
+  .gdpro-node-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(251, 253, 254, 0.99));
+    border: 1px solid rgba(20, 35, 50, 0.12);
+    box-shadow:
+      0 12px 26px rgba(20, 35, 50, 0.058),
+      0 1px 0 rgba(255, 255, 255, 0.94) inset;
+    transition-property: border-color, box-shadow, transform, background-color;
+    transition-duration: 170ms;
+    transition-timing-function: ease-out;
+  }
+
+  .gdpro-node-card:hover {
+    border-color: rgba(20, 35, 50, 0.18);
+    transform: translateY(-1px);
+    box-shadow:
+      0 18px 34px rgba(20, 35, 50, 0.074),
+      0 1px 0 rgba(255, 255, 255, 0.96) inset;
+  }
+
+  .gdpro-node-card-selected {
+    box-shadow:
+      0 18px 38px rgba(20, 35, 50, 0.078),
+      0 0 0 1px rgba(14, 165, 164, 0.18),
+      0 0 0 4px rgba(14, 165, 164, 0.07),
+      0 1px 0 rgba(255, 255, 255, 0.96) inset;
+  }
+
+  .gdpro-inspector-shell {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(250, 252, 254, 0.98)),
+      var(--color-gdpro-bg-sidebar);
+    box-shadow:
+      1px 0 0 rgba(255, 255, 255, 0.94) inset,
+      -10px 0 24px rgba(20, 35, 50, 0.015) inset;
+  }
+
+  .gdpro-floating-hud {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(250, 252, 254, 0.96)),
+      rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(20, 35, 50, 0.11);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.92) inset,
+      0 12px 26px rgba(20, 35, 50, 0.06);
+    backdrop-filter: blur(16px) saturate(125%);
+    -webkit-backdrop-filter: blur(16px) saturate(125%);
+  }
+
+  .gdpro-provider-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(250, 252, 254, 0.98)),
+      var(--color-gdpro-bg-elevated);
+    border: 1px solid var(--color-gdpro-border);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+    transition-property: border-color, background-color, box-shadow, transform;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+  }
+
+  .gdpro-provider-card:hover {
+    border-color: var(--color-gdpro-border-light);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.94) inset,
+      0 8px 18px rgba(20, 35, 50, 0.07);
+  }
+
+  .gdpro-provider-card-active {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(235, 251, 249, 0.96)),
+      linear-gradient(135deg, rgba(14, 165, 164, 0.12), rgba(14, 165, 164, 0.035)),
+      var(--color-gdpro-bg-elevated);
+    border-color: rgba(14, 165, 164, 0.38);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.94) inset,
+      0 0 0 1px rgba(14, 165, 164, 0.07),
+      0 10px 22px rgba(14, 116, 144, 0.07);
   }
 
   .line-clamp-2 {
@@ -270,53 +637,50 @@
 
   /* Glass Panel utility */
   .glass-panel {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: #FFFFFF;
+    border: 1px solid var(--color-gdpro-border);
   }
 
   .glass-panel-strong {
-    background: rgba(255, 255, 255, 0.07);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(32px) saturate(180%);
-    -webkit-backdrop-filter: blur(32px) saturate(180%);
+    background: #FFFFFF;
+    border: 1px solid var(--color-gdpro-border-light);
   }
 
   /* User message bubble */
   .bubble-user {
-    background: linear-gradient(135deg, #0EA5E9 0%, #2DD4BF 100%);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 34%),
+      #0EA5A4;
     color: white;
-    box-shadow: 0 4px 16px rgba(45, 212, 191, 0.25);
+    box-shadow: 0 8px 18px rgba(14, 116, 144, 0.12);
   }
 
   /* Assistant message bubble */
   .bubble-assistant {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: var(--color-gdpro-bg-elevated);
+    border: 1px solid var(--color-gdpro-border);
+    box-shadow: 0 8px 20px rgba(20, 35, 50, 0.04);
   }
 
   /* Prose overrides for markdown */
   .prose-invert {
-    --tw-prose-body: #A3B3C2;
-    --tw-prose-headings: #F0F4F8;
-    --tw-prose-lead: #A3B3C2;
-    --tw-prose-links: #2DD4BF;
-    --tw-prose-bold: #F0F4F8;
-    --tw-prose-counters: #6B7F94;
-    --tw-prose-bullets: #6B7F94;
-    --tw-prose-hr: rgba(255, 255, 255, 0.1);
-    --tw-prose-quotes: #A3B3C2;
-    --tw-prose-quote-borders: #2DD4BF;
-    --tw-prose-captions: #6B7F94;
-    --tw-prose-kbd: #F0F4F8;
+    --tw-prose-body: #3B4B5F;
+    --tw-prose-headings: #111827;
+    --tw-prose-lead: #3B4B5F;
+    --tw-prose-links: #0EA5A4;
+    --tw-prose-bold: #111827;
+    --tw-prose-counters: #718096;
+    --tw-prose-bullets: #718096;
+    --tw-prose-hr: rgba(20, 35, 50, 0.1);
+    --tw-prose-quotes: #3B4B5F;
+    --tw-prose-quote-borders: #0EA5A4;
+    --tw-prose-captions: #718096;
+    --tw-prose-kbd: #111827;
     --tw-prose-kbd-shadows: none;
-    --tw-prose-code: #5EEAD4;
-    --tw-prose-pre-code: #A3B3C2;
-    --tw-prose-pre-bg: rgba(255, 255, 255, 0.05);
-    --tw-prose-th-borders: rgba(255, 255, 255, 0.1);
-    --tw-prose-td-borders: rgba(255, 255, 255, 0.06);
+    --tw-prose-code: #0F766E;
+    --tw-prose-pre-code: #3B4B5F;
+    --tw-prose-pre-bg: rgba(244, 247, 250, 0.9);
+    --tw-prose-th-borders: rgba(20, 35, 50, 0.1);
+    --tw-prose-td-borders: rgba(20, 35, 50, 0.08);
   }
 }

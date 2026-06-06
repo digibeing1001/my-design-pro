@@ -33,7 +33,7 @@ export default function ProjectSwitcher({ projects, currentProject, onSwitch, on
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-gdpro-text truncate">{project?.name || '选择项目'}</div>
-          <div className="text-2xs text-gdpro-text-muted">{project ? `Phase ${project.currentPhase}` : '无项目'}</div>
+          <div className="text-2xs text-gdpro-text-muted">{project ? `第 ${project.currentPhase} 阶段` : '无项目'}</div>
         </div>
         <svg className={`w-4 h-4 text-gdpro-text-muted transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -84,14 +84,14 @@ export default function ProjectSwitcher({ projects, currentProject, onSwitch, on
                   <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 text-sm ${
                     currentProject === p.id ? 'bg-gdpro-accent text-gdpro-bg' : 'bg-gdpro-bg-surface text-gdpro-text-secondary'
                   }`}>
-                    {p.name.charAt(0)}
+                    {String(p.name || p.brandName || 'P').charAt(0)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className={`text-xs font-medium truncate ${currentProject === p.id ? 'text-gdpro-accent' : 'text-gdpro-text'}`}>
-                      {p.name}
+                      {p.name || p.brandName || 'Untitled project'}
                     </div>
                     <div className="text-2xs text-gdpro-text-muted">
-                      Phase {p.currentPhase} · {p.status === 'active' ? '进行中' : p.status === 'completed' ? '已完成' : '已归档'}
+                      第 {p.currentPhase} 阶段 · {p.status === 'active' ? '进行中' : p.status === 'completed' ? '已完成' : '已归档'}
                     </div>
                   </div>
                   {currentProject === p.id && (

@@ -14,7 +14,7 @@ function MarkdownImage({ src, alt }) {
       />
       {enlarged && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center gdpro-modal-backdrop animate-fade-in p-4"
           onClick={() => setEnlarged(false)}
         >
           <img src={src} alt={alt} className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl" />

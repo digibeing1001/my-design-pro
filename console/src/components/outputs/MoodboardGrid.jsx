@@ -31,8 +31,8 @@ export default function MoodboardGrid({ data }) {
               ) : (
                 <ImageIcon className="w-6 h-6 text-gdpro-text-muted" strokeWidth={1.5} />
               )}
-              <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/50 to-transparent">
-                <span className="text-[10px] font-medium text-white">{BOARD_LABELS[board.type] || board.label}</span>
+              <div className="absolute inset-x-1.5 bottom-1.5 rounded-md border border-white/70 bg-white/86 px-2 py-1 shadow-sm backdrop-blur-sm">
+                <span className="text-[10px] font-medium text-gdpro-text-secondary">{BOARD_LABELS[board.type] || board.label}</span>
               </div>
             </div>
             {board.description && (

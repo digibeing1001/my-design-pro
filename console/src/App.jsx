@@ -1,25 +1,59 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import DesignerAgent from './components/DesignerAgent';
-import AssetLibrary from './components/AssetLibrary';
-import ReferenceLibrary from './components/ReferenceLibrary';
-import DesignerProfile from './components/DesignerProfile';
 import ConnectionSetup from './components/ConnectionSetup';
 import AgentSelector from './components/AgentSelector';
 import ErrorBoundary from './components/ErrorBoundary';
 import { openclaw } from './lib/api';
-import { saveToLocal, loadFromLocal, saveToLocalAndSync, pullFromGateway } from './lib/storage';
-import { exportGdproProject } from './lib/exportGdpro';
+import { saveToLocal, loadFromLocal, saveProjectsToLocalAndSync, pullFromGateway, syncWorkspaceFiles } from './lib/storage';
+import {
+  buildDeliveryBundleZipArchive,
+  downloadDeliveryBundleArchive,
+  exportGdproProject,
+  getDeliveryBundleWorkspaceFiles,
+  prepareDeliveryExportProject,
+} from './lib/exportGdpro';
 import { createProject, DEMO_PROJECTS } from './data/projects';
-import { getConfiguredModels, saveModelConfig, saveCustomModels, getCustomModels, addCustomModel, removeCustomModel, getDetectedDefaults } from './data/modelConfig';
+import { getConfiguredModels, saveModelConfig, saveCustomModels, getCustomModels, addCustomModel, removeCustomModel, getDetectedDefaults, buildImageModelRuntimeConfig } from './data/modelConfig';
+import { loadUiLanguage, normalizeUiLanguage, saveUiLanguage, uiText } from './lib/uiLanguage';
+
+const DesignerAgent = lazy(() => import('./components/DesignerAgent'));
+const WorkflowCanvas = lazy(() => import('./components/WorkflowCanvas'));
+const AssetLibrary = lazy(() => import('./components/AssetLibrary'));
+const ReferenceLibrary = lazy(() => import('./components/ReferenceLibrary'));
+const DesignerProfile = lazy(() => import('./components/DesignerProfile'));
 
 const VIEW_COMPONENTS = {
   agent: DesignerAgent,
+  workflow: WorkflowCanvas,
   assets: AssetLibrary,
   references: ReferenceLibrary,
   profile: DesignerProfile,
 };
+
+function ViewLoadingFallback({ view, uiLanguage }) {
+  const copy = uiText('loading', uiLanguage);
+  const label = copy.views?.[view] || copy.defaultView || '工作台';
+
+  return (
+    <div className="h-full flex items-center justify-center bg-gdpro-bg">
+      <div className="w-[280px] rounded-xl border border-gdpro-border bg-gdpro-bg-sidebar/95 px-5 py-4 shadow-[0_24px_80px_rgba(20,35,50,0.16)]">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg gdpro-icon-mark flex items-center justify-center">
+            <div className="w-3.5 h-3.5 rounded-full border-2 border-white/35 border-t-white animate-spin" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold text-gdpro-text truncate">{copy.loadingPrefix} {label}</div>
+            <div className="text-[10px] text-gdpro-text-muted mt-0.5">{copy.loadingSub}</div>
+          </div>
+        </div>
+        <div className="mt-4 h-1 rounded-full bg-gdpro-bg-surface overflow-hidden">
+          <div className="h-full w-1/2 rounded-full bg-gdpro-accent animate-pulse" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Parse URL params for agent injection
 function getUrlParams() {
@@ -32,6 +66,8 @@ function getUrlParams() {
     modelsDetected: url.searchParams.get('modelsDetected') === 'true' || url.searchParams.get('detected') === 'true',
     gatewayUrl: url.searchParams.get('gateway') || null,
     gatewayToken: url.searchParams.get('token') || null,
+    view: url.searchParams.get('view') || null,
+    lang: url.searchParams.get('lang') || null,
     injected: url.searchParams.get('injected') === 'true',
     agents: null,
   };
@@ -65,20 +101,24 @@ function syncToParentAgent(type, data) {
 
 export default function App() {
   const urlParams = getUrlParams();
-  const [activeView, setActiveView] = useState('agent');
+  const [activeView, setActiveView] = useState(() => (VIEW_COMPONENTS[urlParams.view] ? urlParams.view : 'agent'));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [uiLanguage, setUiLanguage] = useState(() => normalizeUiLanguage(urlParams.lang || loadUiLanguage('zh')));
   const [connectionStatus, setConnectionStatus] = useState('unknown');
+  const [queuedDesignRequest, setQueuedDesignRequest] = useState(null);
+  const [deliveryExportState, setDeliveryExportState] = useState({ state: 'idle', label: '' });
   // Determine if we need to show agent selector
   // Count running agents from injected data
   const runningAgents = urlParams.agents?.filter((a) => a.status === 'running') || [];
+  const preferredRunningAgents = runningAgents.filter((a) => a.preferred);
   const hasGatewayInUrl = !!urlParams.gatewayUrl;
   const hasAgentsInjected = !!(urlParams.agents && urlParams.agents.length > 0);
 
   const [showAgentSelector, setShowAgentSelector] = useState(() => {
-    // Show selector only when multiple running agents exist and no direct gateway URL given
-    return !hasGatewayInUrl && runningAgents.length > 1;
+    // Show selector only when multiple running agents exist and no single preferred agent is known.
+    return !hasGatewayInUrl && runningAgents.length > 1 && preferredRunningAgents.length !== 1;
   });
 
   // Models — auto-injected from URL params if available
@@ -110,13 +150,26 @@ export default function App() {
   const [projects, setProjects] = useState(() => loadFromLocal('projects', DEMO_PROJECTS));
   const [currentProjectId, setCurrentProjectId] = useState(() => loadFromLocal('current_project', DEMO_PROJECTS[0]?.id || null));
 
+  useEffect(() => {
+    saveUiLanguage(uiLanguage);
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = uiLanguage === 'en' ? 'en' : 'zh-CN';
+    }
+  }, [uiLanguage]);
+
+  const handleUiLanguageChange = useCallback((language) => {
+    setUiLanguage(saveUiLanguage(language));
+  }, []);
+
   // Agent environment — auto-detected from URL or window globals
   const [agentEnv, setAgentEnv] = useState(() => {
     if (urlParams.env) return urlParams.env;
     if (typeof window !== 'undefined') {
       if (window?.__OPENCLAW__) return 'openclaw';
+      if (window?.__HERMES__) return 'hermes';
       if (window?.__WORKBUDDY__) return 'workbuddy';
       if (window?.__QCLAW__) return 'qclaw';
+      if (window?.__CODEX__) return 'codex';
     }
     return 'unknown';
   });
@@ -158,9 +211,9 @@ export default function App() {
           });
         })
         .catch(() => { setConnectionStatus('disconnected'); });
-    } else if (runningAgents.length === 1) {
-      // Only one running agent discovered via __AGENTS__: auto-connect
-      const agent = runningAgents[0];
+    } else if (preferredRunningAgents.length === 1 || runningAgents.length === 1) {
+      // Auto-connect when launch_console.py found a single clear runtime.
+      const agent = preferredRunningAgents[0] || runningAgents[0];
       setAgentEnv(agent.env);
       openclaw.setConfig(agent.gateway_url, agent.gateway_token);
       setConnectionStatus('connecting');
@@ -217,7 +270,7 @@ export default function App() {
     const updated = [newProject, ...projects];
     setProjects(updated);
     setCurrentProjectId(newProject.id);
-    saveToLocalAndSync('projects', updated, '.gdpro/projects/projects-index.json');
+    saveProjectsToLocalAndSync(updated);
     saveToLocal('current_project', newProject.id);
   }, [projects]);
 
@@ -229,7 +282,7 @@ export default function App() {
   const handleAssetsChange = useCallback((projectId, newAssets) => {
     setProjects((prev) => {
       const updated = prev.map((p) => p.id === projectId ? { ...p, assets: newAssets, updatedAt: Date.now() } : p);
-      saveToLocalAndSync('projects', updated, '.gdpro/projects/projects-index.json');
+      saveProjectsToLocalAndSync(updated);
       return updated;
     });
   }, []);
@@ -237,20 +290,67 @@ export default function App() {
   const handleReferencesChange = useCallback((projectId, newRefs) => {
     setProjects((prev) => {
       const updated = prev.map((p) => p.id === projectId ? { ...p, references: newRefs, updatedAt: Date.now() } : p);
-      saveToLocalAndSync('projects', updated, '.gdpro/projects/projects-index.json');
+      saveProjectsToLocalAndSync(updated);
       return updated;
     });
+  }, []);
+
+  const handleProjectUpdate = useCallback((projectId, updater) => {
+    setProjects((prev) => {
+      let changed = false;
+      const updated = prev.map((p) => {
+        if (p.id !== projectId) return p;
+        changed = true;
+        return typeof updater === 'function' ? updater(p) : { ...p, ...updater, updatedAt: Date.now() };
+      });
+      if (changed) saveProjectsToLocalAndSync(updated);
+      return updated;
+    });
+  }, []);
+
+  const handleAskAssistantFromWorkflow = useCallback(({ prompt, action } = {}) => {
+    if (!prompt) return;
+    setQueuedDesignRequest({
+      id: `workflow_ask_${Date.now()}`,
+      text: prompt,
+      action: action || 'inspect_workflow_node',
+    });
+    setActiveView('agent');
+    setMobileSidebarOpen(false);
+  }, []);
+
+  const handleAssistantRequestConsumed = useCallback((id) => {
+    setQueuedDesignRequest((current) => (current?.id === id ? null : current));
   }, []);
 
   const handleAssetAdopted = useCallback((asset) => {
     const proj = projects.find((p) => p.id === asset.projectId);
     if (!proj) return;
     const updatedAssets = { ...proj.assets };
+    let found = false;
     Object.keys(updatedAssets).forEach((cat) => {
       updatedAssets[cat] = updatedAssets[cat].map((a) =>
-        a.id === asset.id ? { ...a, status: 'adopted', adoptedAt: Date.now() } : a
+        a.id === asset.id
+          ? (() => {
+            found = true;
+            return { ...a, status: 'adopted', adoptedAt: Date.now() };
+          })()
+          : a
       );
     });
+    if (!found) {
+      const category = asset.category || 'draft';
+      updatedAssets[category] = [
+        ...(updatedAssets[category] || []),
+        {
+          ...asset,
+          category,
+          status: 'adopted',
+          projectId: asset.projectId || proj.id,
+          adoptedAt: Date.now(),
+        },
+      ];
+    }
     handleAssetsChange(asset.projectId, updatedAssets);
   }, [projects, handleAssetsChange]);
 
@@ -277,8 +377,39 @@ export default function App() {
     const cfg = getConfiguredModels();
     const next = { ...cfg, imageModel: id };
     saveModelConfig(next);
-    syncToParentAgent('model_change', { type: 'imageModel', id });
+    syncToParentAgent('model_change', { type: 'imageModel', id, config: buildImageModelRuntimeConfig(id) });
   }, []);
+
+  const handleExportDelivery = useCallback(async () => {
+    if (!currentProject) return;
+    setDeliveryExportState({ state: 'preparing', label: '正在整理交付包' });
+    try {
+      const preparedProject = prepareDeliveryExportProject(currentProject);
+      if (!preparedProject) return;
+      const zipResult = buildDeliveryBundleZipArchive(preparedProject, { prepare: false });
+      handleProjectUpdate(currentProject.id, preparedProject);
+
+      let syncResult = { success: false, error: '本地创作服务未连接', written: [] };
+      if (openclaw.url) {
+        setDeliveryExportState({ state: 'syncing', label: '正在同步到本地服务' });
+        syncResult = await syncWorkspaceFiles(getDeliveryBundleWorkspaceFiles(zipResult.bundle));
+      }
+
+      downloadDeliveryBundleArchive(preparedProject, zipResult.archive);
+      setDeliveryExportState({
+        state: syncResult.success ? 'synced' : 'downloaded',
+        label: syncResult.success ? '已下载并同步' : '已下载，未同步',
+      });
+      window.setTimeout(() => {
+        setDeliveryExportState({ state: 'idle', label: '' });
+      }, 2600);
+    } catch (err) {
+      setDeliveryExportState({ state: 'error', label: err.message || '导出失败' });
+      window.setTimeout(() => {
+        setDeliveryExportState({ state: 'idle', label: '' });
+      }, 3600);
+    }
+  }, [currentProject, handleProjectUpdate]);
 
   const handleAddCustomModel = useCallback((type, model) => {
     const updated = addCustomModel(type, model);
@@ -319,16 +450,35 @@ export default function App() {
           onAssetAdopted: handleAssetAdopted,
           onAssetRejected: handleAssetRejected,
           onAssetsChange: handleAssetsChange,
+          onProjectUpdate: handleProjectUpdate,
           llm, imageModel,
           references: currentProject?.references || [],
           assets: currentProject?.assets || {},
+          queuedDesignRequest,
+          onQueuedDesignRequestConsumed: handleAssistantRequestConsumed,
+          uiLanguage,
         };
       case 'assets':
-        return { projects, onAssetsChange: handleAssetsChange };
+        return { projects, onAssetsChange: handleAssetsChange, uiLanguage };
+      case 'workflow':
+        return {
+          project: currentProject,
+          projects,
+          onProjectSwitch: handleProjectSwitch,
+          onProjectCreate: handleProjectCreate,
+          onProjectUpdate: handleProjectUpdate,
+          onAskAssistant: handleAskAssistantFromWorkflow,
+          llm,
+          imageModel,
+          imageModelConfig: buildImageModelRuntimeConfig(imageModel),
+          agentEnv,
+          connectionStatus,
+          uiLanguage,
+        };
       case 'references':
-        return { projects, onReferencesChange: handleReferencesChange };
+        return { projects, onReferencesChange: handleReferencesChange, uiLanguage };
       case 'profile':
-        return {};
+        return { uiLanguage };
       default:
         return {};
     }
@@ -337,23 +487,10 @@ export default function App() {
   const ActiveComponent = VIEW_COMPONENTS[activeView] || DesignerAgent;
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-transparent text-gdpro-text overflow-hidden relative">
-      {/* Animated gradient mesh background */}
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute inset-0 opacity-40"
-          style={{
-            background: 'radial-gradient(ellipse 80% 60% at 20% 30%, rgba(45,212,191,0.12) 0%, transparent 60%), radial-gradient(ellipse 70% 50% at 80% 70%, rgba(56,189,248,0.1) 0%, transparent 60%)',
-          }}
-        />
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full opacity-20 blur-[120px]"
-          style={{ background: 'linear-gradient(135deg, #2DD4BF, #0EA5E9)' }}
-        />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full opacity-15 blur-[120px]"
-          style={{ background: 'linear-gradient(135deg, #34D399, #2DD4BF)' }}
-        />
-      </div>
+    <div className="h-screen w-screen flex flex-col bg-gdpro-bg text-gdpro-text overflow-hidden relative">
       <Header
         onExport={() => exportGdproProject(currentProject)}
+        onExportDelivery={handleExportDelivery}
         onToggleMobileSidebar={() => setMobileSidebarOpen((v) => !v)}
         currentProject={currentProject}
         llm={llm}
@@ -362,6 +499,9 @@ export default function App() {
         onChangeImageModel={handleChangeImageModel}
         agentEnv={agentEnv}
         modelsDetected={modelsDetected}
+        deliveryExportState={deliveryExportState}
+        uiLanguage={uiLanguage}
+        onUiLanguageChange={handleUiLanguageChange}
       />
 
       <div className="flex-1 flex min-h-0">
@@ -378,11 +518,18 @@ export default function App() {
           onCloseMobile={() => setMobileSidebarOpen(false)}
           connectionStatus={connectionStatus}
           onOpenSettings={() => setShowSettings(true)}
+          agents={urlParams.agents}
+          currentAgentEnv={agentEnv}
+          onSwitchAgent={handleSwitchAgent}
+          onDisconnect={handleDisconnect}
+          uiLanguage={uiLanguage}
         />
 
         <main className="flex-1 min-w-0 overflow-hidden">
           <ErrorBoundary>
-            <ActiveComponent {...getViewProps()} />
+            <Suspense fallback={<ViewLoadingFallback view={activeView} uiLanguage={uiLanguage} />}>
+              <ActiveComponent {...getViewProps()} />
+            </Suspense>
           </ErrorBoundary>
         </main>
       </div>
@@ -391,6 +538,7 @@ export default function App() {
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
         onConnect={handleConnect}
+        uiLanguage={uiLanguage}
       />
 
       {showAgentSelector && (
@@ -407,6 +555,7 @@ export default function App() {
             setShowAgentSelector(false);
             handleDisconnect();
           }}
+          uiLanguage={uiLanguage}
         />
       )}
     </div>

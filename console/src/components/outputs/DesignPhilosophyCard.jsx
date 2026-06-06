@@ -1,11 +1,11 @@
 import React from 'react';
-import { Compass, Palette, Type, Layout, Sparkles } from 'lucide-react';
+import { Compass, Palette, Type, Layout, Waves } from 'lucide-react';
 
 const DNA_ICONS = {
   color: Palette,
   typography: Type,
   composition: Layout,
-  texture: Sparkles,
+  texture: Waves,
 };
 
 export default function DesignPhilosophyCard({ data }) {
@@ -26,7 +26,7 @@ export default function DesignPhilosophyCard({ data }) {
       {Object.keys(dna).length > 0 && (
         <div className="px-3 py-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
           {Object.entries(dna).map(([key, value]) => {
-            const Icon = DNA_ICONS[key] || Sparkles;
+            const Icon = DNA_ICONS[key] || Waves;
             return (
               <div key={key} className="flex items-start gap-2 p-2 rounded-md bg-gdpro-bg-hover/40">
                 <Icon className="w-3.5 h-3.5 text-gdpro-text-muted shrink-0 mt-0.5" strokeWidth={1.5} />

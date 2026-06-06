@@ -1,23 +1,26 @@
 import React, { useState } from 'react';
-import { MessageSquare, Image, BookOpen, User, ChevronLeft, Sparkles, FolderOpen, Plus, Check, X, Settings, Link, Link2, Unlink, Loader2 } from 'lucide-react';
+import { MessageSquare, Workflow, Image, BookOpen, User, ChevronLeft, FolderOpen, Plus, Check, X, Settings, Link, Link2, Unlink, Loader2 } from 'lucide-react';
+import { uiText } from '../lib/uiLanguage';
 
 const NAV_ITEMS = [
-  { id: 'agent', label: '设计师 Agent', icon: MessageSquare },
-  { id: 'assets', label: '资产库', icon: Image },
-  { id: 'references', label: '知识库', icon: BookOpen },
-  { id: 'profile', label: '设计师档案', icon: User },
+  { id: 'agent', icon: MessageSquare },
+  { id: 'workflow', icon: Workflow },
+  { id: 'assets', icon: Image },
+  { id: 'references', icon: BookOpen },
+  { id: 'profile', icon: User },
 ];
 
 const STATUS_CONFIG = {
-  connected: { dot: 'bg-gdpro-success', icon: Link2, label: 'Agent Skill 正常运行', sub: '已连接', theme: 'border-gdpro-success/20 bg-gdpro-success/5' },
-  connecting: { dot: 'bg-gdpro-accent animate-pulse', icon: Loader2, label: '连接中', sub: '正在检测 Gateway…', theme: 'border-gdpro-accent/20 bg-gdpro-accent/5' },
-  disconnected: { dot: 'bg-gdpro-danger', icon: Unlink, label: '离线', sub: 'Gateway 连接失败', theme: 'border-gdpro-danger/20 bg-gdpro-danger/5' },
-  unknown: { dot: 'bg-gdpro-text-muted', icon: Unlink, label: '未检测', sub: '未连接 Skill', theme: 'border-gdpro-text-muted/20 bg-white/[0.03]' },
+  connected: { dot: 'bg-gdpro-success', icon: Link2 },
+  connecting: { dot: 'bg-gdpro-accent animate-pulse', icon: Loader2 },
+  disconnected: { dot: 'bg-gdpro-danger', icon: Unlink },
+  unknown: { dot: 'bg-gdpro-text-muted', icon: Unlink },
 };
 
-export default function Sidebar({ activeView, onChange, collapsed, onToggle, projects, currentProjectId, onProjectSwitch, onProjectCreate, mobileOpen, onCloseMobile, connectionStatus, onOpenSettings, agents, currentAgentEnv, onSwitchAgent, onDisconnect }) {
+export default function Sidebar({ activeView, onChange, collapsed, onToggle, projects, currentProjectId, onProjectSwitch, onProjectCreate, mobileOpen, onCloseMobile, connectionStatus, onOpenSettings, agents, currentAgentEnv, onSwitchAgent, onDisconnect, uiLanguage }) {
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const copy = uiText('sidebar', uiLanguage);
 
   const handleCreate = () => {
     const name = newProjectName.trim();
@@ -28,6 +31,7 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
   };
 
   const status = STATUS_CONFIG[connectionStatus] || STATUS_CONFIG.unknown;
+  const statusCopy = copy.status?.[connectionStatus] || copy.status?.unknown || ['离线预览模式', '连接服务后可创建与交付'];
   const isConnected = connectionStatus === 'connected';
   const StatusIcon = status.icon;
 
@@ -36,34 +40,34 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/30 z-30 md:hidden backdrop-blur-sm"
+          className="fixed inset-0 gdpro-modal-backdrop z-30 md:hidden"
           onClick={onCloseMobile}
         />
       )}
       <div
-        className={`shrink-0 flex flex-col transition-all duration-300 ${
+        className={`shrink-0 flex flex-col transition-[width,transform,opacity] duration-300 ${
           collapsed ? 'w-[56px]' : 'w-[230px]'
         } ${
           mobileOpen
-            ? 'fixed left-0 top-[42px] bottom-0 z-40 md:relative md:top-auto md:z-auto'
+            ? 'fixed left-0 top-[46px] bottom-0 z-40 md:relative md:top-auto md:z-auto'
             : 'hidden md:flex'
-        }`}
-        style={{
-          background: 'rgba(255,255,255,0.03)',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
-          backdropFilter: 'blur(24px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-        }}
+        } gdpro-sidebar-shell`}
       >
       {/* Toggle */}
       <div className="h-[42px] flex items-center justify-between px-3 shrink-0"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        style={{ borderBottom: '1px solid rgba(24,35,48,0.1)' }}
       >
-        {!collapsed && <span className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider">导航</span>}
+        {!collapsed && (
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider leading-tight">{copy.navigation}</div>
+            <div className="text-[9px] text-gdpro-text-muted/75 leading-tight">{copy.navigationSub}</div>
+          </div>
+        )}
         <button
           onClick={onToggle}
-          className="p-1 rounded-lg hover:bg-white/10 transition-colors"
-          title={collapsed ? '展开' : '收起'}
+          className="gdpro-tool-icon min-w-[26px] min-h-[26px]"
+          title={collapsed ? copy.expand : copy.collapse}
+          aria-label={collapsed ? copy.expandSidebar : copy.collapseSidebar}
         >
           <ChevronLeft
             className={`w-3.5 h-3.5 text-gdpro-text-muted transition-transform duration-200 ${collapsed ? 'rotate-180' : ''}`}
@@ -77,19 +81,23 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
         {NAV_ITEMS.map((item) => {
           const isActive = activeView === item.id;
           const Icon = item.icon;
+          const labels = copy.nav?.[item.id] || [item.id, ''];
           return (
             <button
               key={item.id}
               onClick={() => onChange(item.id)}
               className={`mac-sidebar-item ${isActive ? 'mac-sidebar-item-active' : ''} ${collapsed ? 'justify-center px-2' : ''}`}
-              title={collapsed ? item.label : ''}
+              title={collapsed ? labels[0] : ''}
             >
               <Icon
                 className={`w-[15px] h-[15px] shrink-0 ${isActive ? 'text-gdpro-accent' : 'text-gdpro-text-muted'}`}
                 strokeWidth={isActive ? 2.5 : 1.5}
               />
               {!collapsed && (
-                <span className="text-[12px] font-medium leading-tight">{item.label}</span>
+                <span className="min-w-0">
+                  <span className="block text-[12px] font-medium leading-tight truncate">{labels[0]}</span>
+                  <span className="block text-[9px] text-gdpro-text-muted leading-tight truncate">{labels[1]}</span>
+                </span>
               )}
             </button>
           );
@@ -99,16 +107,20 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
       {!collapsed && (
         <>
           {/* Divider */}
-          <div className="mx-3 my-2 h-px shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }} />
+          <div className="mx-3 my-2 h-px shrink-0" style={{ background: 'rgba(24,35,48,0.1)' }} />
 
           {/* Projects Section */}
           <div className="px-3 mb-1 flex items-center justify-between shrink-0">
-            <span className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider">项目</span>
+            <div>
+              <div className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider leading-tight">{copy.projects}</div>
+              <div className="text-[9px] text-gdpro-text-muted/75 leading-tight">{copy.projectsSub}</div>
+            </div>
             {!showNewProject && (
               <button
                 onClick={() => setShowNewProject(true)}
-                className="p-0.5 rounded hover:bg-white/10 transition-colors text-gdpro-text-muted hover:text-gdpro-text"
-                title="新建项目"
+                className="gdpro-tool-icon min-w-[24px] min-h-[24px]"
+                title={copy.newProject}
+                aria-label={copy.newProject}
               >
                 <Plus className="w-3 h-3" strokeWidth={2.5} />
               </button>
@@ -121,7 +133,7 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
                 <input
                   autoFocus
                   className="gdpro-input text-[11px] py-[3px] px-2 flex-1"
-                  placeholder="项目名称"
+                  placeholder={copy.newProjectPlaceholder}
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
                   onKeyDown={(e) => {
@@ -129,10 +141,10 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
                     if (e.key === 'Escape') { setShowNewProject(false); setNewProjectName(''); }
                   }}
                 />
-                <button onClick={handleCreate} className="p-1 rounded-lg gdpro-button text-gdpro-bg hover:brightness-110 transition-all">
+                <button onClick={handleCreate} className="p-1 rounded-lg gdpro-button text-gdpro-bg hover:brightness-110">
                   <Check className="w-3 h-3" strokeWidth={3} />
                 </button>
-                <button onClick={() => { setShowNewProject(false); setNewProjectName(''); }} className="p-1 rounded-lg hover:bg-white/10 text-gdpro-text-muted transition-colors">
+                <button onClick={() => { setShowNewProject(false); setNewProjectName(''); }} className="p-1 rounded-lg hover:bg-gdpro-bg-hover text-gdpro-text-muted transition-colors">
                   <X className="w-3 h-3" strokeWidth={2} />
                 </button>
               </div>
@@ -147,29 +159,30 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
                 <button
                   key={p.id}
                   onClick={() => onProjectSwitch(p.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-[6px] rounded-xl text-left transition-all duration-150 ${
+                  className={`w-full flex items-center gap-2 px-2 py-[7px] rounded-lg text-left border transition-colors duration-150 ${
                     isActive
                       ? 'text-gdpro-accent'
-                      : 'text-gdpro-text-secondary hover:text-gdpro-text hover:bg-white/[0.06]'
+                      : 'border-transparent text-gdpro-text-secondary hover:text-gdpro-text hover:bg-gdpro-bg-hover hover:border-gdpro-border'
                   }`}
                   style={isActive ? {
-                    background: 'linear-gradient(135deg, rgba(45,212,191,0.15) 0%, rgba(56,189,248,0.1) 100%)',
-                    border: '1px solid rgba(45,212,191,0.15)',
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(232,247,244,0.94)), linear-gradient(90deg, rgba(15,159,142,0.16), rgba(15,159,142,0.05))',
+                    border: '1px solid rgba(15,159,142,0.24)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 7px 16px rgba(15,80,72,0.08)',
                   } : {}}
-                  title={p.name}
+                  title={p.name || p.brandName || 'Untitled project'}
                 >
                   <div className={`w-[18px] h-[18px] rounded-[5px] flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                    isActive ? 'bg-gdpro-accent/20 text-gdpro-accent' : 'bg-white/10 text-gdpro-text-muted'
+                    isActive ? 'bg-gdpro-accent/15 text-gdpro-accent' : 'bg-gdpro-bg-surface text-gdpro-text-muted'
                   }`}>
-                    {p.name.charAt(0)}
+                    {String(p.name || p.brandName || 'P').charAt(0)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className={`text-[12px] font-medium truncate ${isActive ? 'text-gdpro-accent' : ''}`}>
-                      {p.name}
+                      {p.name || p.brandName || 'Untitled project'}
                     </div>
                   </div>
                   <span className={`text-[9px] px-1.5 py-[1px] rounded-md shrink-0 font-medium ${
-                    isActive ? 'bg-gdpro-accent/15 text-gdpro-accent' : 'bg-white/10 text-gdpro-text-muted'
+                    isActive ? 'bg-gdpro-accent/15 text-gdpro-accent' : 'bg-gdpro-bg-surface text-gdpro-text-muted'
                   }`}>
                     P{p.currentPhase}
                   </span>
@@ -179,14 +192,17 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
           </div>
 
           {/* Bottom: Connection Status + Version */}
-          <div className="mt-auto shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="mt-auto shrink-0" style={{ borderTop: '1px solid rgba(24,35,48,0.1)' }}>
             {/* Connection Status Panel */}
             <div className="px-3 pt-2.5 pb-2">
               <div
-                className={`relative rounded-xl border overflow-hidden transition-colors duration-200`}
+                className={`relative rounded-lg border overflow-hidden transition-colors duration-200`}
                 style={{
-                  background: isConnected ? 'rgba(52,211,153,0.06)' : 'rgba(255,255,255,0.03)',
-                  borderColor: isConnected ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.08)',
+                  background: isConnected
+                    ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(238,250,247,0.94)), rgba(36,161,96,0.06)'
+                    : 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,249,251,0.94))',
+                  borderColor: isConnected ? 'rgba(36,161,96,0.18)' : 'rgba(24,35,48,0.12)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 10px 22px rgba(24,35,48,0.08)',
                   backdropFilter: 'blur(12px)',
                   WebkitBackdropFilter: 'blur(12px)',
                 }}
@@ -194,12 +210,12 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
                 {/* Status header */}
                 <div className="flex items-center gap-2 px-2.5 py-2">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${status.dot}`} />
-                  <span className="text-[11px] font-semibold text-gdpro-text leading-none">{status.label}</span>
+                  <span className="text-[11px] font-semibold text-gdpro-text leading-none">{statusCopy[0]}</span>
                   {isConnected && agents && agents.length > 1 && (
                     <button
                       onClick={onSwitchAgent}
-                      className="ml-auto p-1 rounded hover:bg-white/10 transition-colors"
-                      title="切换 Agent"
+                      className="ml-auto p-1 rounded hover:bg-gdpro-bg-hover transition-colors"
+                      title={copy.switchService}
                     >
                       <Settings className="w-3 h-3 text-gdpro-text-muted" strokeWidth={2} />
                     </button>
@@ -207,8 +223,8 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
                   {!isConnected && (
                     <button
                       onClick={onOpenSettings}
-                      className="ml-auto p-1 rounded hover:bg-white/10 transition-colors"
-                      title="配置 Gateway"
+                      className="ml-auto p-1 rounded hover:bg-gdpro-bg-hover transition-colors"
+                      title={copy.connectService}
                     >
                       <Settings className="w-3 h-3 text-gdpro-text-muted" strokeWidth={2} />
                     </button>
@@ -218,51 +234,51 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
                 {/* Expanded info for non-connected states */}
                 {!isConnected && (
                   <div className="px-2.5 pb-2.5 pt-0">
-                    <div className="h-px mb-2" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                    <div className="h-px mb-2" style={{ background: 'rgba(24,35,48,0.1)' }} />
                     <p className="text-[10px] text-gdpro-text-muted leading-relaxed">
-                      Console 是 Graphic Design Pro 的可视化前端，所有设计能力由 Skill 提供。
+                      {copy.offlineNote}
                     </p>
                     <button
                       onClick={onOpenSettings}
-                      className="mt-1.5 w-full flex items-center justify-center gap-1 px-2 py-[5px] rounded-lg transition-all duration-150 hover:brightness-110"
+                      className="mt-1.5 w-full flex items-center justify-center gap-1 px-2 py-[5px] rounded-lg transition-[filter,background-color,border-color] duration-150 hover:brightness-110"
                       style={{
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'rgba(255,255,255,0.72)',
+                        border: '1px solid rgba(24,35,48,0.12)',
                       }}
                     >
                       <StatusIcon className="w-3 h-3 text-gdpro-text-muted" strokeWidth={2} />
-                      <span className="text-[10px] font-medium text-gdpro-text-secondary">配置 Gateway 连接</span>
+                      <span className="text-[10px] font-medium text-gdpro-text-secondary">{copy.connectService}</span>
                     </button>
                   </div>
                 )}
 
                 {isConnected && (
                   <div className="px-2.5 pb-2 pt-0">
-                    <div className="text-[10px] text-gdpro-text-muted mb-1.5">{status.sub}</div>
+                    <div className="text-[10px] text-gdpro-text-muted mb-1.5">{statusCopy[1]}</div>
                     <div className="flex gap-1.5">
                       {agents && agents.length > 1 && (
                         <button
                           onClick={onSwitchAgent}
-                          className="flex-1 flex items-center justify-center gap-1 px-2 py-[4px] rounded-lg transition-all duration-150 hover:brightness-110"
+                          className="flex-1 flex items-center justify-center gap-1 px-2 py-[4px] rounded-lg transition-[filter,background-color,border-color] duration-150 hover:brightness-110"
                           style={{
-                            background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            background: 'rgba(255,255,255,0.72)',
+                            border: '1px solid rgba(24,35,48,0.12)',
                           }}
                         >
                           <Link className="w-3 h-3 text-gdpro-text-muted" strokeWidth={2} />
-                          <span className="text-[10px] font-medium text-gdpro-text-secondary">切换</span>
+                          <span className="text-[10px] font-medium text-gdpro-text-secondary">{copy.switchServiceShort}</span>
                         </button>
                       )}
                       <button
                         onClick={onDisconnect}
-                        className="flex-1 flex items-center justify-center gap-1 px-2 py-[4px] rounded-lg transition-all duration-150"
+                        className="flex-1 flex items-center justify-center gap-1 px-2 py-[4px] rounded-lg transition-colors duration-150"
                         style={{
                           background: 'rgba(248,113,113,0.08)',
                           border: '1px solid rgba(248,113,113,0.15)',
                         }}
                       >
                         <Unlink className="w-3 h-3 text-gdpro-danger" strokeWidth={2} />
-                        <span className="text-[10px] font-medium text-gdpro-danger">断开</span>
+                        <span className="text-[10px] font-medium text-gdpro-danger">{copy.disconnect}</span>
                       </button>
                     </div>
                   </div>
@@ -272,11 +288,11 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
 
             {/* Version */}
             <div className="px-3 pb-2.5 pt-0">
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                <Sparkles className="w-3 h-3 text-gdpro-accent shrink-0" strokeWidth={2} />
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg gdpro-project-chip">
+                <Workflow className="w-3 h-3 text-gdpro-accent shrink-0" strokeWidth={2} />
                 <div>
                   <div className="text-[10px] font-medium text-gdpro-text-secondary leading-tight">Graphic Design Pro</div>
-                  <div className="text-[9px] text-gdpro-text-muted leading-tight">Console v3.0</div>
+                  <div className="text-[9px] text-gdpro-text-muted leading-tight">Studio v3.1</div>
                 </div>
               </div>
             </div>
@@ -286,11 +302,11 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
 
       {/* Collapsed state: mini status dot */}
       {collapsed && (
-        <div className="mt-auto shrink-0 p-2 flex justify-center" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="mt-auto shrink-0 p-2 flex justify-center" style={{ borderTop: '1px solid rgba(24,35,48,0.1)' }}>
           <button
             onClick={onOpenSettings}
-            className="relative p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            title={isConnected ? '已连接' : '点击配置 Gateway'}
+            className="relative p-1.5 rounded-lg hover:bg-gdpro-bg-hover transition-colors"
+            title={isConnected ? copy.connectedMini : copy.connectService}
           >
             <span className={`block w-2 h-2 rounded-full ${status.dot}`} />
             {!isConnected && (
