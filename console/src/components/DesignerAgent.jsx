@@ -14,6 +14,7 @@ import { applyAgentControl } from '../lib/agentControl';
 import { buildDesignControlState } from '../lib/designControl';
 import { getQuickActions, canProceedToNext, getPhaseDescription, canGenerateImage, PHASE_CONFIG } from '../lib/phaseGuard';
 import { buildImageModelRuntimeConfig } from '../data/modelConfig';
+import { candidateFromAssetDecision, extractPreferenceCandidatesFromText, queuePreferenceCandidates } from '../lib/designerPreferenceLearning';
 import { uiText } from '../lib/uiLanguage';
 
 const RISK_LABELS = {
@@ -278,6 +279,7 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
     .map((category) => copy.assetCategories?.[category] || category)
     .join(uiLanguage === 'en' ? ', ' : '、');
   const outputPathLabel = (label) => copy.outputPathLabels?.[label] || label;
+  const needsBriefOnboarding = Boolean(project && !project.brandName && !project.documents?.brief);
   const contextSummaryText = buildContextSummary({
     profile: loadFromLocal('designer_profile', {}),
     references: references || [],
@@ -397,6 +399,8 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
       attachments: attachFiles.map((f) => ({ name: f.name, type: f.type, size: f.size })),
       timestamp: Date.now(),
     };
+    const preferenceCandidates = extractPreferenceCandidatesFromText(text, { project });
+    if (preferenceCandidates.length) queuePreferenceCandidates(preferenceCandidates);
     const newMessages = [...messages, userMsg];
     persistMessages(newMessages);
     setInput(''); setFiles([]); setIsLoading(true);
@@ -453,10 +457,14 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
   const handleButtonClick = (type, payload, messageId) => {
     if (type === BUTTON_TYPES.ADOPT && payload) {
       onAssetAdopted?.({ ...payload, projectId: payload.projectId || project?.id });
+      const candidate = candidateFromAssetDecision(payload, 'adopt', { project });
+      if (candidate) queuePreferenceCandidates([candidate]);
       persistMessages(messages.map((m) => m.id === messageId && m.assets
         ? { ...m, assets: m.assets.map((a) => a.id === payload.id ? { ...a, status: 'adopted' } : a) } : m));
     } else if (type === BUTTON_TYPES.REJECT && payload) {
       onAssetRejected?.({ ...payload, projectId: payload.projectId || project?.id });
+      const candidate = candidateFromAssetDecision(payload, 'reject', { project });
+      if (candidate) queuePreferenceCandidates([candidate]);
       persistMessages(messages.map((m) => m.id === messageId && m.assets
         ? { ...m, assets: m.assets.filter((a) => a.id !== payload.id) } : m));
     } else if (type === BUTTON_TYPES.NEXT_PHASE) {
@@ -652,18 +660,18 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
               <Compass className="w-8 h-8 text-white" strokeWidth={1.6} />
             </div>
             <div>
-              <h3 className="text-[16px] font-semibold text-gdpro-text mb-1.5 tracking-tight">{copy.emptyTitle}</h3>
+              <h3 className="text-[16px] font-semibold text-gdpro-text mb-1.5 tracking-tight">{needsBriefOnboarding ? copy.briefOnboardingTitle : copy.emptyTitle}</h3>
               <p className="text-[13px] text-gdpro-text-secondary w-full max-w-[280px] sm:max-w-sm leading-relaxed mx-auto">
-                {copy.emptyBodyLines?.map((line, index) => (
+                {(needsBriefOnboarding ? copy.briefOnboardingBodyLines : copy.emptyBodyLines)?.map((line, index) => (
                   <React.Fragment key={line}>
                     {line}
-                    {index < copy.emptyBodyLines.length - 1 && <br />}
+                    {index < (needsBriefOnboarding ? copy.briefOnboardingBodyLines : copy.emptyBodyLines).length - 1 && <br />}
                   </React.Fragment>
                 ))}
               </p>
             </div>
             <div className="flex flex-wrap justify-center gap-2 max-w-[310px] sm:max-w-lg w-full">
-              {getQuickActions(project?.currentPhase || 1).map((s) => (
+              {(needsBriefOnboarding ? copy.briefStarterActions : getQuickActions(project?.currentPhase || 1)).map((s) => (
                 <button key={s} onClick={() => handleSend(s)}
                   className="gdpro-button-secondary px-2.5 sm:px-3.5 py-[6px] text-[11px] sm:text-[12px] rounded-lg hover:text-gdpro-text min-w-0"
                 >

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Archive,
   AlertTriangle,
@@ -18,6 +18,7 @@ import {
   PenTool,
   Trash2,
   Type,
+  Upload,
   Workflow,
   XCircle,
 } from 'lucide-react';
@@ -37,6 +38,14 @@ import { auditMaterialArtwork } from '../lib/artworkQuality';
 import { applyAgentOperations } from '../lib/agentOperations';
 import { uiText } from '../lib/uiLanguage';
 import { openclaw } from '../lib/api';
+import { parseFile } from '../lib/parser';
+import {
+  assignBrandKitToProject,
+  createBrandKitFromParsedFiles,
+  loadBrandKitLibrary,
+  removeBrandKit,
+  upsertBrandKit,
+} from '../lib/brandKitLibrary';
 
 const RISK_STYLE = {
   critical: 'text-gdpro-danger bg-gdpro-danger/10 border-gdpro-danger/20',
@@ -200,8 +209,10 @@ const CONTROL_TEXT_EN = {
   '最终交付物需要可编辑矢量源稿': 'Final deliverables need editable vector sources',
   '交付格式需要包含 SVG 或其他可编辑源文件': 'Delivery formats should include SVG or another editable source file',
   '品牌名称已明确': 'Brand name confirmed',
+  '品牌名称': 'Brand name',
   '客户或品牌名称是所有 VI 判断的根身份。': 'The client or brand name anchors every VI decision.',
   '客户需求已记录': 'Client brief recorded',
+  '客户需求': 'Client brief',
   '解读设计方向前，工作台需要一份书面需求。': 'A written brief is required before interpreting the design direction.',
   '设计哲学已记录': 'Design philosophy recorded',
   '视觉系统需要一条稳定的策略句或设计哲学文档。': 'The visual system needs a stable strategy line or design philosophy document.',
@@ -210,8 +221,10 @@ const CONTROL_TEXT_EN = {
   '品牌字体可用': 'Brand typography ready',
   '扩展商用物料前，标题和正文字体必须明确。': 'Display and body typefaces must be clear before expanding commercial materials.',
   '主 Logo 源稿已选定': 'Primary logo source selected',
+  '主 Logo 源稿': 'Primary logo source',
   '工作台必须复用已采纳主 Logo，不能每个物料重新绘制。': 'The workspace must reuse the adopted primary logo instead of redrawing it per material.',
   '需求目标物料已识别': 'Target materials identified',
+  '目标物料': 'Target materials',
   '约定书需要知道本项目要优化哪些商用物料。': 'The contract needs to know which commercial materials this project will optimize.',
   '目标物料已有生产单': 'Target materials have production sheets',
   '已识别的目标物料都有生产单。': 'Identified target materials already have production sheets.',
@@ -1208,6 +1221,138 @@ function BrandKitPassportPanel({ brandKit, onAction, copy }) {
   );
 }
 
+function GlobalBrandKitLibraryPanel({ project, onProjectUpdate }) {
+  const [kits, setKits] = useState(() => loadBrandKitLibrary());
+  const [kitName, setKitName] = useState('');
+  const [isParsing, setIsParsing] = useState(false);
+  const fileInputRef = useRef(null);
+  const assignedId = project?.assignedBrandKitId;
+
+  const refresh = () => setKits(loadBrandKitLibrary());
+
+  const handleFiles = async (files) => {
+    const fileList = Array.from(files || []);
+    if (!fileList.length || isParsing) return;
+    setIsParsing(true);
+    const parsedFiles = await Promise.all(fileList.map(async (file) => ({
+      id: `kit_file_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: file.name,
+      size: file.size,
+      type: file.type || file.name.split('.').pop() || 'file',
+      createdAt: Date.now(),
+      parsed: await parseFile(file),
+    })));
+    const kit = createBrandKitFromParsedFiles({
+      name: kitName.trim(),
+      files: parsedFiles,
+    });
+    upsertBrandKit(kit);
+    setKitName('');
+    refresh();
+    setIsParsing(false);
+  };
+
+  const assignKit = (kit) => {
+    if (!project?.id || !onProjectUpdate) return;
+    const nextProject = assignBrandKitToProject(project, kit);
+    onProjectUpdate(project.id, nextProject);
+    refresh();
+  };
+
+  const deleteKit = (kitId) => {
+    removeBrandKit(kitId);
+    refresh();
+  };
+
+  return (
+    <div className="space-y-3 mb-3">
+      <div className="rounded-lg border border-gdpro-border bg-gdpro-bg-elevated p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[12px] font-semibold text-gdpro-text">全局品牌套件库</div>
+            <p className="text-[10px] text-gdpro-text-muted leading-relaxed mt-1">
+              品牌套件是可复用知识库。上传规范、Logo 说明或品牌手册后，可分配给不同项目。
+            </p>
+          </div>
+          <span className="rounded-md border border-gdpro-accent/20 bg-gdpro-accent/10 px-2 py-1 text-[10px] font-semibold text-gdpro-accent">
+            {kits.length} 套
+          </span>
+        </div>
+        <div className="mt-3 flex gap-1.5">
+          <input
+            value={kitName}
+            onChange={(e) => setKitName(e.target.value)}
+            className="gdpro-input text-[12px] py-[5px] flex-1"
+            placeholder="套件名称（可选）"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isParsing}
+            className="gdpro-button text-[11px] px-2.5 py-[5px] flex items-center gap-1.5 disabled:opacity-40"
+          >
+            {isParsing ? <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2.4} /> : <Upload className="w-3 h-3" strokeWidth={2.4} />}
+            上传
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            accept="image/*,.pdf,.svg,.md,.txt"
+            onChange={(e) => handleFiles(e.target.files)}
+          />
+        </div>
+      </div>
+
+      {kits.length ? (
+        <div className="space-y-2">
+          {kits.slice(0, 5).map((kit) => {
+            const assigned = assignedId === kit.id;
+            return (
+              <div key={kit.id} className={`rounded-lg border px-3 py-2 ${assigned ? 'border-gdpro-accent/30 bg-gdpro-accent/8' : 'border-gdpro-border bg-gdpro-bg-elevated'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold text-gdpro-text truncate">{kit.name}</div>
+                    <p className="text-[9px] leading-relaxed text-gdpro-text-muted mt-0.5 line-clamp-2">{kit.description}</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      <span className="rounded border border-gdpro-border bg-gdpro-bg-surface px-1.5 py-[1px] text-[9px] text-gdpro-text-muted">{kit.files.length} 文件</span>
+                      <span className="rounded border border-gdpro-border bg-gdpro-bg-surface px-1.5 py-[1px] text-[9px] text-gdpro-text-muted">{kit.guidance.colors.length} 色彩</span>
+                      <span className="rounded border border-gdpro-border bg-gdpro-bg-surface px-1.5 py-[1px] text-[9px] text-gdpro-text-muted">{kit.guidance.rules.length} 规则</span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => assignKit(kit)}
+                      className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${assigned ? 'border-gdpro-success/20 bg-gdpro-success/10 text-gdpro-success' : 'border-gdpro-accent/20 bg-gdpro-accent/10 text-gdpro-accent hover:bg-gdpro-accent/15'}`}
+                    >
+                      {assigned ? '已分配' : '分配'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteKit(kit.id)}
+                      className="rounded-md border border-gdpro-border bg-gdpro-bg-surface p-1 text-gdpro-text-muted hover:text-gdpro-danger"
+                      title="删除套件"
+                      aria-label="删除套件"
+                    >
+                      <Trash2 className="w-3 h-3" strokeWidth={2.3} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-gdpro-border bg-gdpro-bg-surface px-3 py-2 text-[10px] text-gdpro-text-muted leading-relaxed">
+          还没有全局品牌套件。上传一份品牌规范、Logo 文档或参考说明即可建立第一套。
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatusIcon({ ok, blocker }) {
   if (ok) return <CheckCircle2 className="w-3.5 h-3.5 text-gdpro-success shrink-0" strokeWidth={2} />;
   if (blocker) return <XCircle className="w-3.5 h-3.5 text-gdpro-danger shrink-0" strokeWidth={2} />;
@@ -1232,7 +1377,7 @@ function buildTokenDraft(project) {
     : [{ name: '主色', hex: '#16A085', usage: 'Primary' }];
 
   return {
-    brandName: project?.brandName || project?.name || '',
+    brandName: project?.brandName || '',
     slogan: kit.slogan || '',
     philosophy: kit.philosophy || '',
     display: typography.display || '',
@@ -1281,7 +1426,7 @@ function BrandTokenEditor({ project, onProjectUpdate }) {
     if (!project?.id || !onProjectUpdate) return;
     onProjectUpdate(project.id, (prev) => ({
       ...prev,
-      brandName: draft.brandName.trim() || prev.brandName || prev.name,
+      brandName: draft.brandName.trim(),
       brandKit: {
         ...(prev.brandKit || {}),
         slogan: draft.slogan.trim(),
@@ -2820,6 +2965,10 @@ export default function DesignControlPanel({ project, contextSummary, onAction, 
         </Section>
 
         <Section title={copy.sections.brandKit} icon={PackageCheck}>
+          <GlobalBrandKitLibraryPanel
+            project={project}
+            onProjectUpdate={onProjectUpdate}
+          />
           <BrandKitPassportPanel
             brandKit={brandConsistencyKit}
             onAction={onAction}

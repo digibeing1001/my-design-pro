@@ -91,7 +91,7 @@ function inferMaterialTargets(project, materialPlan) {
 function buildSourceRevision(project, checks, targets) {
   const parts = [
     project?.id || '',
-    project?.brandName || project?.name || '',
+    project?.brandName || '',
     getDocumentText(project, 'brief'),
     getDocumentText(project, 'philosophy'),
     normalizeText(project?.brandKit?.philosophy),
@@ -111,10 +111,12 @@ function getStoredContract(project) {
 }
 
 function buildPromptRules(project, targets) {
-  const brandName = project?.brandName || project?.name || 'the brand';
+  const brandName = project?.brandName || 'the brand';
   const targetNames = targets.map((item) => item.name).join(', ') || 'the current phase deliverables';
   return [
-    `Treat ${brandName} as the locked client identity unless the GUI changes the project name.`,
+    project?.brandName
+      ? `Treat ${brandName} as the locked client identity unless the GUI changes the brand name.`
+      : 'The client brand name is not locked yet; ask for it before treating any project label as brand identity.',
     'Use the brief, design philosophy, color tokens, typography tokens, and adopted logo as the non-negotiable design source.',
     'Do not invent new logos, palettes, fonts, slogans, or material formats when contract evidence is missing; request the missing evidence or return a GUI operation.',
     `Optimize outputs for ${targetNames}; every produced material must cite Manifest refs after Phase 3.`,
@@ -125,7 +127,7 @@ function buildPromptRules(project, targets) {
 export function buildDesignBriefContract(project, { manifest = null, materialPlan = null } = {}) {
   const resolvedManifest = manifest || buildBrandAssetManifest(project);
   const resolvedMaterialPlan = materialPlan || buildMaterialProductionPlan(project);
-  const brandName = normalizeText(project?.brandName || project?.name);
+  const brandName = normalizeText(project?.brandName);
   const brief = getDocument(project, 'brief');
   const philosophyText = normalizeText(project?.brandKit?.philosophy || getDocumentText(project, 'philosophy'));
   const colors = Array.isArray(project?.brandKit?.colors) ? project.brandKit.colors : [];
@@ -139,7 +141,7 @@ export function buildDesignBriefContract(project, { manifest = null, materialPla
   const checks = [
     contractCheck({
       id: 'brand-identity',
-      label: '品牌名称已明确',
+      label: '品牌名称',
       passed: Boolean(brandName),
       severity: 'critical',
       evidence: 'project.brandName',
@@ -148,7 +150,7 @@ export function buildDesignBriefContract(project, { manifest = null, materialPla
     }),
     contractCheck({
       id: 'brief',
-      label: '客户需求已记录',
+      label: '客户需求',
       passed: Boolean(brief?.content || brief?.title),
       severity: 'critical',
       evidence: 'documents.brief',
@@ -157,7 +159,7 @@ export function buildDesignBriefContract(project, { manifest = null, materialPla
     }),
     contractCheck({
       id: 'design-philosophy',
-      label: '设计哲学已记录',
+      label: '设计哲学',
       passed: Boolean(philosophyText),
       severity: 'high',
       evidence: 'brandKit.philosophy / documents.philosophy',
@@ -166,7 +168,7 @@ export function buildDesignBriefContract(project, { manifest = null, materialPla
     }),
     contractCheck({
       id: 'color-system',
-      label: '品牌色可用',
+      label: '品牌色',
       passed: colors.length > 0,
       severity: 'high',
       evidence: 'brandKit.colors',
@@ -175,7 +177,7 @@ export function buildDesignBriefContract(project, { manifest = null, materialPla
     }),
     contractCheck({
       id: 'typography-system',
-      label: '品牌字体可用',
+      label: '品牌字体',
       passed: hasDisplayFont && hasBodyFont,
       severity: 'high',
       evidence: 'brandKit.typography',
@@ -184,7 +186,7 @@ export function buildDesignBriefContract(project, { manifest = null, materialPla
     }),
     contractCheck({
       id: 'logo-source',
-      label: '主 Logo 源稿已选定',
+      label: '主 Logo 源稿',
       passed: Boolean(logoItem),
       severity: 'critical',
       evidence: 'assets.logo / assetManifest.items',
@@ -193,7 +195,7 @@ export function buildDesignBriefContract(project, { manifest = null, materialPla
     }),
     contractCheck({
       id: 'material-targets',
-      label: '需求目标物料已识别',
+      label: '目标物料',
       passed: targets.length > 0,
       required: false,
       severity: 'medium',

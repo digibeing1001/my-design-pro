@@ -32,7 +32,7 @@ const MODEL_TEXT = {
       'fal-media': 'fal Multi-model',
       'flux-2': 'FLUX.2',
       'liblib-star': 'Liblib Star',
-      'custom-image-endpoint': 'Custom visual channel',
+      'custom-image-endpoint': 'Custom image tool',
     },
     desc: {
       'gpt-4o': 'Strong general planning for complex design reasoning',
@@ -43,7 +43,7 @@ const MODEL_TEXT = {
       kimi: 'Long-context reading for documents and briefs',
       'gpt-image': 'Reliable instruction following and image editing for concept refinement',
       'recraft-vector': 'Vector, icon, and brand-style graphics for deliverable assets',
-      'fal-media': 'A shared channel for switching visual generators quickly',
+      'fal-media': 'A shared image tool for switching visual generators quickly',
       'flux-2': 'High-control visual exploration with the FLUX family',
       seedream: 'Strong Chinese understanding and multi-reference brand exploration',
       wanxiang: 'Good for Chinese commercial materials, editing, and ecommerce scenes',
@@ -54,7 +54,7 @@ const MODEL_TEXT = {
       ideogram: 'Good for poster directions and text-heavy visual exploration',
       imagen: 'Stable natural-image quality for references and concepts',
       cogview: 'Friendly to Chinese briefs and quick visual exploration',
-      'custom-image-endpoint': 'Use a local partner or team-hosted visual channel',
+      'custom-image-endpoint': 'Use a local partner or team-hosted image tool',
     },
     providerNames: {
       volcengine: 'Volcengine Ark',
@@ -68,7 +68,7 @@ const MODEL_TEXT = {
       'alibaba-dashscope': 'Wanxiang',
       'tencent-hunyuan': 'Hunyuan Image',
       'liblib-xingliu': 'Star Image',
-      'custom-openai-compatible': 'Custom visual channel',
+      'custom-openai-compatible': 'Custom image tool',
     },
     providerRegion: {
       'custom-openai-compatible': 'Custom',

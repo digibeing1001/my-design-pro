@@ -684,9 +684,47 @@ export const EXAMPLE_IMAGE_MODEL = { id: 'example', name: '预览模型', provid
 
 // ── Detected models from Agent config (injected by launch_console.py) ──
 
+const DETECTED_MODELS_STORAGE_KEY = 'gdpro_detected_models';
+let runtimeDetectedModels = null;
+
+function normalizeDetectedModels(models) {
+  if (!models || typeof models !== 'object') return null;
+  return {
+    llm: Array.isArray(models.llm) ? models.llm : [],
+    image: Array.isArray(models.image) ? models.image : [],
+    defaults: models.defaults && typeof models.defaults === 'object' ? models.defaults : {},
+    source: models.source || 'local-agent',
+    updatedAt: models.updatedAt || Date.now(),
+  };
+}
+
+export function setDetectedModels(models) {
+  const normalized = normalizeDetectedModels(models);
+  if (!normalized) return null;
+  runtimeDetectedModels = normalized;
+  if (typeof window !== 'undefined') {
+    window.__MODELS__ = normalized;
+    try {
+      window.localStorage.setItem(DETECTED_MODELS_STORAGE_KEY, JSON.stringify(normalized));
+    } catch {
+      // Ignore storage failures in restricted embeds.
+    }
+  }
+  return normalized;
+}
+
 function getDetectedModels() {
+  if (runtimeDetectedModels) return runtimeDetectedModels;
   if (typeof window !== 'undefined' && window.__MODELS__) {
-    return window.__MODELS__;
+    return setDetectedModels(window.__MODELS__) || window.__MODELS__;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = window.localStorage.getItem(DETECTED_MODELS_STORAGE_KEY);
+      if (stored) return setDetectedModels(JSON.parse(stored));
+    } catch {
+      // Ignore invalid cached model data.
+    }
   }
   return null;
 }

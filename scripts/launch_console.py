@@ -305,6 +305,22 @@ def frontend_gateway_for_agent(agent):
     return f"/proxy/{env}"
 
 
+def public_agent_payload(agents):
+    """Return browser-safe agent metadata. Gateway tokens stay server-side."""
+    payload = []
+    for agent in agents:
+        payload.append({
+            "env": agent["env"],
+            "gateway_url": frontend_gateway_for_agent(agent),
+            "gateway_token": None,
+            "status": agent["status"],
+            "preferred": agent.get("preferred", False),
+            "local": bool(agent.get("local")),
+            "version": agent.get("version"),
+        })
+    return payload
+
+
 def discover_all_agents():
     """
     Discover all configured and running Agent gateways.
@@ -554,6 +570,27 @@ def discover_models_from_config():
 
         # Determine defaults
         default_llm = primary
+        if default_llm and default_llm not in seen_ids:
+            matched = next(
+                (
+                    item["id"]
+                    for item in llm_models
+                    if item["id"] == default_llm or item["id"].split("/")[-1] == default_llm
+                ),
+                None,
+            )
+            if matched:
+                default_llm = matched
+        if default_llm and not any(item["id"] == default_llm for item in llm_models):
+            provider_name = default_llm.split("/")[0] if "/" in default_llm else "agent-default"
+            model_name = default_llm.split("/")[-1]
+            llm_models.insert(0, {
+                "id": default_llm,
+                "name": model_name,
+                "provider": provider_name,
+                "icon": "AI",
+                "desc": "Agent 默认文字模型",
+            })
         default_image = None
         # Prefer an image-heuristic model as default image model
         if image_models:
@@ -585,26 +622,16 @@ def inject_agents_into_html(dist_dir, agents):
 
         # Build proxy agent list (frontend uses /proxy/{env})
         agent_map = {}
-        proxy_agents = []
         for a in agents:
             if not a.get("local"):
                 agent_map[a["env"]] = a["gateway_url"]
-            proxy_agents.append({
-                "env": a["env"],
-                "gateway_url": frontend_gateway_for_agent(a),
-                "gateway_token": None,
-                "status": a["status"],
-                "preferred": a.get("preferred", False),
-                "local": bool(a.get("local")),
-                "version": a.get("version"),
-            })
 
         # Inject agent map for proxy handler
         map_json = json.dumps(agent_map)
         map_injection = f'<script>window.__AGENT_MAP__ = {map_json};</script>\n'
 
         # Inject proxy agent list for frontend
-        agents_json = json.dumps(proxy_agents)
+        agents_json = json.dumps(public_agent_payload(agents))
         agents_injection = f'<script>window.__AGENTS__ = {agents_json};</script>\n'
 
         # Inject actual models from OpenClaw config
@@ -639,7 +666,11 @@ class ProxyHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == '/local-codex/health':
+        if parsed.path == '/local-agents':
+            self._local_agents_list()
+        elif parsed.path == '/local-models':
+            self._local_models_list()
+        elif parsed.path == '/local-codex/health':
             self._local_codex_health()
         elif parsed.path == '/local-handoff/latest':
             self._local_handoff_latest(parsed)
@@ -730,6 +761,36 @@ class ProxyHandler(SimpleHTTPRequestHandler):
         if not raw:
             return {}
         return json.loads(raw.decode("utf-8"))
+
+    def _local_agents_list(self):
+        try:
+            agents = discover_all_agents()
+            models = discover_models_from_config()
+            self._send_json(200, {
+                "success": True,
+                "agents": public_agent_payload(agents),
+                "models": models,
+            })
+        except Exception as exc:
+            self._send_json(500, {
+                "success": False,
+                "agents": [],
+                "error": str(exc),
+            })
+
+    def _local_models_list(self):
+        try:
+            models = discover_models_from_config()
+            self._send_json(200, {
+                "success": True,
+                "models": models,
+            })
+        except Exception as exc:
+            self._send_json(500, {
+                "success": False,
+                "models": None,
+                "error": str(exc),
+            })
 
     def _safe_gdpro_path(self, rel_path):
         if not isinstance(rel_path, str) or not rel_path.strip():
@@ -1001,7 +1062,7 @@ Request payload:
         prompt = self._build_codex_chat_prompt(body)
         result = self._run_codex_exec(
             prompt,
-            model=body.get("codexModel") or None,
+            model=body.get("codexModel") or body.get("llm") or None,
             timeout_seconds=body.get("timeoutSeconds") or 240,
         )
         if not result.get("success"):
@@ -1514,18 +1575,7 @@ def build_console_url(base_url, agents, args):
         params.append(f"env={urllib.parse.quote(agent['env'], safe='')}")
         url = f"{url}?{'&'.join(params)}"
     elif len(agents) > 0:
-        proxy_agents = []
-        for a in agents:
-            proxy_agents.append({
-                "env": a["env"],
-                "gateway_url": frontend_gateway_for_agent(a),
-                "gateway_token": None,
-                "status": a["status"],
-                "preferred": a.get("preferred", False),
-                "local": bool(a.get("local")),
-                "version": a.get("version"),
-            })
-        agents_payload = base64.b64encode(json.dumps(proxy_agents).encode("utf-8")).decode("utf-8")
+        agents_payload = base64.b64encode(json.dumps(public_agent_payload(agents)).encode("utf-8")).decode("utf-8")
         params = [f"agents={urllib.parse.quote(agents_payload, safe='')}"]
         url = f"{url}?{'&'.join(params)}"
 

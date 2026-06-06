@@ -23,7 +23,7 @@ export function createProject(name, brandName = '') {
   return {
     id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     name: name || '未命名项目',
-    brandName: brandName || name || '',
+    brandName: brandName || '',
     status: 'active',
     currentPhase: 1,
     createdAt: Date.now(),

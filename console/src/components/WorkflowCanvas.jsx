@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -21,7 +21,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { buildWorkflowGraph } from '../lib/workflowGraph';
+import { buildWorkflowGraph, createDefaultWorkflowCanvas, WORKFLOW_CANVAS_SCHEMA_VERSION } from '../lib/workflowGraph';
 import { applyAgentOperations } from '../lib/agentOperations';
 import { MATERIAL_TEMPLATES } from '../lib/materialProduction';
 import { uiText } from '../lib/uiLanguage';
@@ -255,6 +255,31 @@ function downloadSvgMaterial(material) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function serializeWorkflowNode(node) {
+  return {
+    id: node.id,
+    title: node.title,
+    subtitle: node.subtitle,
+    phase: node.phase,
+    artifact: node.artifact,
+    position: node.position,
+    inputs: node.inputs || [],
+    outputs: node.outputs || [],
+    outputLabel: node.outputLabel,
+    templateId: node.templateId || node.id,
+    custom: Boolean(node.custom),
+    done: Boolean(node.done),
+  };
+}
+
+function serializeWorkflowEdge(edge, index) {
+  return {
+    id: edge.id || `edge-${edge.from}-${edge.to}-${index}`,
+    from: edge.from,
+    to: edge.to,
+  };
 }
 
 function templateSizeLabel(size = {}, copy) {
@@ -2220,10 +2245,16 @@ export default function WorkflowCanvas({
   const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
   const [reviewDecisionOpen, setReviewDecisionOpen] = useState(false);
   const dragRef = useRef(null);
+  const previousProjectIdRef = useRef(project?.id);
 
   useEffect(() => {
+    const projectChanged = previousProjectIdRef.current !== project?.id;
+    previousProjectIdRef.current = project?.id;
     setPositions(Object.fromEntries(graph.nodes.map((node) => [node.id, node.position])));
-    setSelectedNodeId(graph.nodes[0]?.id || null);
+    setSelectedNodeId((prev) => {
+      if (!projectChanged && prev && graph.nodes.some((node) => node.id === prev)) return prev;
+      return graph.nodes[0]?.id || null;
+    });
   }, [project?.id, graph.nodes]);
 
   const positionedNodes = graph.nodes.map((node) => ({
@@ -2255,6 +2286,99 @@ export default function WorkflowCanvas({
     imageModelConfig,
     agentEnv,
     connectionStatus,
+  };
+
+  const persistWorkflowCanvas = useCallback((nodes, edges = graph.edges) => {
+    if (!project?.id || !onProjectUpdate) return;
+    const canvas = {
+      schemaVersion: WORKFLOW_CANVAS_SCHEMA_VERSION,
+      nodes: nodes.map(serializeWorkflowNode),
+      edges: edges.map(serializeWorkflowEdge),
+      updatedAt: Date.now(),
+    };
+    onProjectUpdate(project.id, (prev) => ({
+      ...prev,
+      workflowCanvas: canvas,
+      updatedAt: Date.now(),
+    }));
+  }, [graph.edges, onProjectUpdate, project?.id]);
+
+  const persistWorkflowPositions = useCallback((nextPositions) => {
+    const nextNodes = positionedNodes.map((node) => ({
+      ...node,
+      position: nextPositions[node.id] || node.position,
+    }));
+    persistWorkflowCanvas(nextNodes, graph.edges);
+  }, [graph.edges, persistWorkflowCanvas, positionedNodes]);
+
+  const addCustomNode = () => {
+    if (!project?.id) return;
+    const title = window.prompt(copy.customNodePromptTitle, copy.customNodeDefaultTitle);
+    if (!title?.trim()) return;
+    const previous = selectedNode || positionedNodes[positionedNodes.length - 1];
+    const id = `custom-step-${Date.now()}`;
+    const nextX = previous ? previous.position.x + 300 : 120;
+    const shouldWrap = previous && nextX > WORLD.width - 360;
+    const node = {
+      id,
+      title: title.trim(),
+      subtitle: copy.customNodeDefaultSubtitle,
+      phase: Math.min(6, Math.max(1, previous?.phase || 1)),
+      artifact: 'custom-workflow-step',
+      position: previous
+        ? {
+            x: shouldWrap ? 80 : nextX,
+            y: shouldWrap ? Math.min(WORLD.height - 190, previous.position.y + 220) : previous.position.y,
+          }
+        : { x: 120, y: 120 },
+      inputs: [copy.customNodeInput],
+      outputs: [copy.customNodeOutput],
+      outputLabel: copy.customNodeOutputLabel,
+      templateId: null,
+      custom: true,
+      size: previous?.size || { width: 238, height: 150 },
+    };
+    const nextEdges = previous
+      ? [...graph.edges, { id: `edge-${previous.id}-${id}`, from: previous.id, to: id }]
+      : graph.edges;
+    persistWorkflowCanvas([...positionedNodes, node], nextEdges);
+    setPositions((prev) => ({ ...prev, [id]: node.position }));
+    setSelectedNodeId(id);
+  };
+
+  const editSelectedNode = () => {
+    if (!selectedNode) return;
+    const title = window.prompt(copy.editNodePromptTitle, selectedNode.title || '');
+    if (!title?.trim()) return;
+    const subtitle = window.prompt(copy.editNodePromptSubtitle, selectedNode.subtitle || '') ?? selectedNode.subtitle;
+    const nextNodes = positionedNodes.map((node) => (
+      node.id === selectedNode.id
+        ? { ...node, title: title.trim(), subtitle: String(subtitle || '').trim() || node.subtitle }
+        : node
+    ));
+    persistWorkflowCanvas(nextNodes, graph.edges);
+  };
+
+  const deleteSelectedNode = () => {
+    if (!selectedNode || positionedNodes.length <= 1) return;
+    if (!window.confirm(copy.deleteNodeConfirm(workflowNodeCopy(copy, selectedNode).title))) return;
+    const nextNodes = positionedNodes.filter((node) => node.id !== selectedNode.id);
+    const nextEdges = graph.edges.filter((edge) => edge.from !== selectedNode.id && edge.to !== selectedNode.id);
+    persistWorkflowCanvas(nextNodes, nextEdges);
+    setSelectedNodeId(nextNodes[0]?.id || null);
+  };
+
+  const restoreDefaultCanvas = () => {
+    if (!project?.id || !onProjectUpdate) return;
+    if (!window.confirm(copy.restoreTemplateConfirm)) return;
+    const canvas = createDefaultWorkflowCanvas();
+    onProjectUpdate(project.id, (prev) => ({
+      ...prev,
+      workflowCanvas: canvas,
+      updatedAt: Date.now(),
+    }));
+    setPositions(Object.fromEntries(canvas.nodes.map((node) => [node.id, node.position])));
+    setSelectedNodeId(canvas.nodes[0]?.id || null);
   };
 
   useEffect(() => {
@@ -2488,14 +2612,28 @@ export default function WorkflowCanvas({
         }));
       }
     };
-    const handleUp = () => { dragRef.current = null; };
+    const handleUp = (event) => {
+      const drag = dragRef.current;
+      if (drag?.type === 'node') {
+        const nextPosition = {
+          x: Math.max(12, drag.startNode.x + (event.clientX - drag.start.x) / zoom),
+          y: Math.max(12, drag.startNode.y + (event.clientY - drag.start.y) / zoom),
+        };
+        setPositions((prev) => {
+          const next = { ...prev, [drag.nodeId]: nextPosition };
+          persistWorkflowPositions(next);
+          return next;
+        });
+      }
+      dragRef.current = null;
+    };
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
     return () => {
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleUp);
     };
-  }, [zoom]);
+  }, [persistWorkflowPositions, zoom]);
 
   const resetView = () => {
     setPan({ x: 24, y: 18 });
@@ -2528,6 +2666,34 @@ export default function WorkflowCanvas({
             </button>
             <button
               type="button"
+              onClick={addCustomNode}
+              disabled={!project}
+              className="px-2 py-[6px] rounded-md border border-gdpro-border bg-gdpro-bg-elevated text-gdpro-text-muted hover:text-gdpro-text focus:outline-none focus-visible:ring-2 focus-visible:ring-gdpro-accent disabled:opacity-40"
+              title={copy.addCustomNode}
+              aria-label={copy.addCustomNode}
+            >
+              <Plus className="w-3.5 h-3.5" strokeWidth={2.2} />
+            </button>
+            <button
+              type="button"
+              onClick={editSelectedNode}
+              disabled={!selectedNode}
+              className="hidden sm:inline-flex px-2.5 py-[6px] rounded-md border border-gdpro-border bg-gdpro-bg-elevated text-[11px] text-gdpro-text-muted hover:text-gdpro-text focus:outline-none focus-visible:ring-2 focus-visible:ring-gdpro-accent disabled:opacity-40"
+            >
+              {copy.editNode}
+            </button>
+            <button
+              type="button"
+              onClick={deleteSelectedNode}
+              disabled={!selectedNode || positionedNodes.length <= 1}
+              className="px-2 py-[6px] rounded-md border border-gdpro-border bg-gdpro-bg-elevated text-gdpro-text-muted hover:text-gdpro-danger focus:outline-none focus-visible:ring-2 focus-visible:ring-gdpro-accent disabled:opacity-40"
+              title={copy.deleteNode}
+              aria-label={copy.deleteNode}
+            >
+              <X className="w-3.5 h-3.5" strokeWidth={2.2} />
+            </button>
+            <button
+              type="button"
               onClick={() => setZoom((value) => Math.max(0.55, value - 0.1))}
               className="px-2 py-[6px] rounded-md border border-gdpro-border bg-gdpro-bg-elevated text-gdpro-text-muted hover:text-gdpro-text focus:outline-none focus-visible:ring-2 focus-visible:ring-gdpro-accent"
               title={copy.zoomOut}
@@ -2553,6 +2719,14 @@ export default function WorkflowCanvas({
               aria-label={copy.resetView}
             >
               <Maximize2 className="w-3.5 h-3.5" strokeWidth={2.2} />
+            </button>
+            <button
+              type="button"
+              onClick={restoreDefaultCanvas}
+              disabled={!project}
+              className="hidden sm:inline-flex px-2.5 py-[6px] rounded-md border border-gdpro-border bg-gdpro-bg-elevated text-[11px] text-gdpro-text-muted hover:text-gdpro-text focus:outline-none focus-visible:ring-2 focus-visible:ring-gdpro-accent disabled:opacity-40"
+            >
+              {copy.restoreTemplate}
             </button>
           </div>
         </div>

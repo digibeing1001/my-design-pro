@@ -1,6 +1,7 @@
 import { buildDesignControlState } from './designControl';
 
 export const WORKFLOW_GRAPH_SCHEMA_VERSION = 'gdpro.workflow-graph.v1';
+export const WORKFLOW_CANVAS_SCHEMA_VERSION = 'gdpro.workflow-canvas.v1';
 
 const NODE_SIZE = { width: 238, height: 150 };
 
@@ -176,6 +177,83 @@ const BASE_EDGES = [
   ['impact-matrix', 'artwork-source'],
 ];
 
+function cloneDefaultNode(node) {
+  return {
+    id: node.id,
+    title: node.title,
+    subtitle: node.subtitle,
+    phase: node.phase,
+    artifact: node.artifact,
+    position: { ...node.position },
+    inputs: [...(node.inputs || [])],
+    outputs: [...(node.outputs || [])],
+    outputLabel: node.outputLabel,
+    templateId: node.id,
+    custom: false,
+  };
+}
+
+export function createDefaultWorkflowCanvas() {
+  return {
+    schemaVersion: WORKFLOW_CANVAS_SCHEMA_VERSION,
+    nodes: BASE_NODES.map(cloneDefaultNode),
+    edges: BASE_EDGES.map(([from, to], index) => ({
+      id: `edge-${from}-${to}-${index}`,
+      from,
+      to,
+    })),
+    updatedAt: Date.now(),
+  };
+}
+
+function normalizeCanvasNode(node = {}, index = 0) {
+  const base = BASE_NODES.find((item) => item.id === node.id || item.id === node.templateId);
+  const merged = base ? { ...cloneDefaultNode(base), ...node } : {
+    id: node.id || `custom-step-${index + 1}`,
+    title: node.title || `自定义步骤 ${index + 1}`,
+    subtitle: node.subtitle || '按项目需要补充这一步的目标和产物',
+    phase: node.phase || index + 1,
+    artifact: node.artifact || 'custom-workflow-step',
+    position: node.position || { x: 120 + index * 80, y: 120 + index * 60 },
+    inputs: node.inputs || ['上一步输出'],
+    outputs: node.outputs || ['这一步产物'],
+    outputLabel: node.outputLabel || '等待处理',
+    templateId: node.templateId || null,
+    custom: node.custom !== false,
+  };
+  return {
+    ...merged,
+    position: {
+      x: Number.isFinite(Number(merged.position?.x)) ? Number(merged.position.x) : 120 + index * 80,
+      y: Number.isFinite(Number(merged.position?.y)) ? Number(merged.position.y) : 120 + index * 60,
+    },
+    size: NODE_SIZE,
+    inputs: Array.isArray(merged.inputs) ? merged.inputs : [],
+    outputs: Array.isArray(merged.outputs) ? merged.outputs : [],
+    custom: Boolean(merged.custom),
+  };
+}
+
+function resolveCanvas(project) {
+  const stored = project?.workflowCanvas;
+  if (!stored?.nodes?.length) return createDefaultWorkflowCanvas();
+  const nodes = stored.nodes.map(normalizeCanvasNode);
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edges = (stored.edges?.length ? stored.edges : [])
+    .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
+    .map((edge, index) => ({
+      id: edge.id || `edge-${edge.from}-${edge.to}-${index}`,
+      from: edge.from,
+      to: edge.to,
+    }));
+  return {
+    schemaVersion: WORKFLOW_CANVAS_SCHEMA_VERSION,
+    nodes,
+    edges,
+    updatedAt: stored.updatedAt || Date.now(),
+  };
+}
+
 function statusTone(status) {
   if (['locked', 'ready', 'pass', 'signed', 'clean', 'system-pass'].includes(status)) return 'success';
   if (['ready-to-compile', 'ready-to-lock', 'actionable'].includes(status)) return 'info';
@@ -197,6 +275,7 @@ function resultStatusLabel(status) {
 }
 
 function nodeStatus(node, state) {
+  if (node.custom) return node.done ? 'locked' : 'draft';
   switch (node.id) {
     case 'brief-contract':
       return state.designBriefContract?.status || 'blocked';
@@ -227,6 +306,13 @@ function nodeStatus(node, state) {
 }
 
 function nodeMetrics(node, state) {
+  if (node.custom) {
+    return [
+      ['输入', node.inputs?.length || 0],
+      ['产物', node.outputs?.length || 0],
+      ['状态', node.done ? '完成' : '待做'],
+    ];
+  }
   switch (node.id) {
     case 'brief-contract':
       return [
@@ -288,6 +374,7 @@ function nodeMetrics(node, state) {
 }
 
 function nodeIssues(node, state) {
+  if (node.custom) return [];
   switch (node.id) {
     case 'brief-contract':
       return state.designBriefContract?.violations || [];
@@ -548,6 +635,7 @@ function activityTone(status) {
 }
 
 function buildOperationActivity(node, state) {
+  if (node.custom) return [];
   const results = state.operationResults || [];
   return results
     .filter((item) => operationNodeIds(item.operationType).includes(node.id))
@@ -579,7 +667,7 @@ function buildNodePreview(base, project, state, operations, issues) {
         title: '这一步的产物',
         summary: '一份可直接落地的客户需求边界，避免后续自由发挥。',
         items: [
-          { label: '品牌名称', value: project?.brandName || project?.name || '待填写' },
+          { label: '品牌名称', value: project?.brandName || '待确认' },
           { label: '需求简报', value: project?.documents?.brief?.title || '待补充' },
           { label: '客户场景', value: `${state.designBriefContract?.targets?.length || 0} 个` },
         ],
@@ -795,17 +883,18 @@ function buildNode(base, state) {
 
 export function buildWorkflowGraph(project) {
   const state = buildDesignControlState(project);
-  const nodesWithoutControl = BASE_NODES.map((node) => {
+  const canvas = resolveCanvas(project);
+  const nodesWithoutControl = canvas.nodes.map((node) => {
     const built = buildNode(node, state);
     return {
       ...built,
       preview: buildNodePreview(node, project, state, built.operations, built.issues),
     };
   });
-  const baseEdges = BASE_EDGES.map(([from, to], index) => ({
-    id: `edge-${from}-${to}-${index}`,
-    from,
-    to,
+  const baseEdges = canvas.edges.map((edge, index) => ({
+    id: edge.id || `edge-${edge.from}-${edge.to}-${index}`,
+    from: edge.from,
+    to: edge.to,
     tone: 'muted',
   }));
   const nodes = nodesWithoutControl.map((node) => ({
@@ -813,11 +902,11 @@ export function buildWorkflowGraph(project) {
     control: buildNodeControl(node, nodesWithoutControl, baseEdges, state),
   }));
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  const edges = BASE_EDGES.map(([from, to], index) => ({
-    id: `edge-${from}-${to}-${index}`,
-    from,
-    to,
-    tone: nodeMap.get(to)?.tone || 'muted',
+  const edges = canvas.edges.map((edge, index) => ({
+    id: edge.id || `edge-${edge.from}-${edge.to}-${index}`,
+    from: edge.from,
+    to: edge.to,
+    tone: nodeMap.get(edge.to)?.tone || 'muted',
   }));
   const safeOperations = nodes.reduce((sum, node) => sum + node.operations.filter((op) => op.autoRunnable).length, 0);
   const passedChecks = nodes.reduce((sum, node) => sum + (node.control?.passed || 0), 0);
@@ -833,6 +922,7 @@ export function buildWorkflowGraph(project) {
   return {
     schemaVersion: WORKFLOW_GRAPH_SCHEMA_VERSION,
     projectId: project?.id || null,
+    canvas,
     nodes,
     edges,
     state,

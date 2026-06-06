@@ -14,7 +14,7 @@ import {
   prepareDeliveryExportProject,
 } from './lib/exportGdpro';
 import { createProject, DEMO_PROJECTS } from './data/projects';
-import { getConfiguredModels, saveModelConfig, saveCustomModels, getCustomModels, addCustomModel, removeCustomModel, getDetectedDefaults, buildImageModelRuntimeConfig } from './data/modelConfig';
+import { getConfiguredModels, saveModelConfig, saveCustomModels, getCustomModels, addCustomModel, removeCustomModel, getDetectedDefaults, buildImageModelRuntimeConfig, setDetectedModels } from './data/modelConfig';
 import { loadUiLanguage, normalizeUiLanguage, saveUiLanguage, uiText } from './lib/uiLanguage';
 
 const DesignerAgent = lazy(() => import('./components/DesignerAgent'));
@@ -109,16 +109,15 @@ export default function App() {
   const [connectionStatus, setConnectionStatus] = useState('unknown');
   const [queuedDesignRequest, setQueuedDesignRequest] = useState(null);
   const [deliveryExportState, setDeliveryExportState] = useState({ state: 'idle', label: '' });
+  const [availableAgents, setAvailableAgents] = useState(() => urlParams.agents || []);
   // Determine if we need to show agent selector
   // Count running agents from injected data
-  const runningAgents = urlParams.agents?.filter((a) => a.status === 'running') || [];
-  const preferredRunningAgents = runningAgents.filter((a) => a.preferred);
+  const runningAgents = availableAgents.filter((a) => a.status === 'running');
   const hasGatewayInUrl = !!urlParams.gatewayUrl;
-  const hasAgentsInjected = !!(urlParams.agents && urlParams.agents.length > 0);
 
   const [showAgentSelector, setShowAgentSelector] = useState(() => {
-    // Show selector only when multiple running agents exist and no single preferred agent is known.
-    return !hasGatewayInUrl && runningAgents.length > 1 && preferredRunningAgents.length !== 1;
+    // Show selector whenever multiple local partners are running.
+    return !hasGatewayInUrl && runningAgents.length > 1;
   });
 
   // Models — auto-injected from URL params if available
@@ -175,20 +174,36 @@ export default function App() {
   });
 
   // Apply detected models from Agent config
-  const applyDetectedModels = () => {
+  const applyDetectedModels = (modelsData = null) => {
+    if (modelsData) setDetectedModels(modelsData);
     const defaults = getDetectedDefaults();
     if (!defaults) return;
+    const cfg = getConfiguredModels();
+    const next = { ...cfg };
     if (defaults.llm) {
       setLlm(defaults.llm);
-      const cfg = getConfiguredModels();
-      saveModelConfig({ ...cfg, llm: defaults.llm });
+      next.llm = defaults.llm;
     }
     if (defaults.image) {
       setImageModel(defaults.image);
-      const cfg = getConfiguredModels();
-      saveModelConfig({ ...cfg, imageModel: defaults.image });
+      next.imageModel = defaults.image;
     }
+    saveModelConfig(next);
   };
+
+  const refreshDetectedModels = useCallback(async () => {
+    try {
+      const res = await openclaw.discoverLocalModels();
+      const modelsData = res?.models || res;
+      if (modelsData?.defaults || modelsData?.llm?.length || modelsData?.image?.length) {
+        setModelsDetected(true);
+        applyDetectedModels(modelsData);
+      }
+      return modelsData;
+    } catch {
+      return null;
+    }
+  }, []);
 
   // Auto-connect if single gateway params injected or only one running agent discovered
   useEffect(() => {
@@ -200,7 +215,7 @@ export default function App() {
         .then(() => {
           setConnectionStatus('connected');
           setModelsDetected(true);
-          applyDetectedModels();
+          refreshDetectedModels();
           // Pull .gdpro/ data from workspace on connect
           pullFromGateway().then((res) => {
             if (res.success && res.pulled?.length) {
@@ -211,9 +226,9 @@ export default function App() {
           });
         })
         .catch(() => { setConnectionStatus('disconnected'); });
-    } else if (preferredRunningAgents.length === 1 || runningAgents.length === 1) {
+    } else if (runningAgents.length === 1) {
       // Auto-connect when launch_console.py found a single clear runtime.
-      const agent = preferredRunningAgents[0] || runningAgents[0];
+      const agent = runningAgents[0];
       setAgentEnv(agent.env);
       openclaw.setConfig(agent.gateway_url, agent.gateway_token);
       setConnectionStatus('connecting');
@@ -221,7 +236,7 @@ export default function App() {
         .then(() => {
           setConnectionStatus('connected');
           setModelsDetected(true);
-          applyDetectedModels();
+          refreshDetectedModels();
           pullFromGateway().then((res) => {
             if (res.success && res.pulled?.length) {
               const refreshed = loadFromLocal('projects', DEMO_PROJECTS);
@@ -235,23 +250,27 @@ export default function App() {
 
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
 
-  const handleConnect = (url, token, envName) => {
+  const handleConnect = async (url, token, envName, options = {}) => {
+    if (Array.isArray(options.agents)) setAvailableAgents(options.agents);
     openclaw.setConfig(url, token);
     if (envName) setAgentEnv(envName);
     setConnectionStatus('connecting');
-    openclaw.healthCheck()
-      .then(() => {
-        setConnectionStatus('connected');
-        setModelsDetected(true);
-        applyDetectedModels();
-        pullFromGateway().then((res) => {
-          if (res.success && res.pulled?.length) {
-            const refreshed = loadFromLocal('projects', DEMO_PROJECTS);
-            setProjects(refreshed);
-          }
-        });
-      })
-      .catch(() => { setConnectionStatus('disconnected'); setModelsDetected(false); });
+    try {
+      await openclaw.healthCheck();
+      setConnectionStatus('connected');
+      setModelsDetected(true);
+      await refreshDetectedModels();
+      const res = await pullFromGateway();
+      if (res.success && res.pulled?.length) {
+        const refreshed = loadFromLocal('projects', DEMO_PROJECTS);
+        setProjects(refreshed);
+      }
+      return true;
+    } catch {
+      setConnectionStatus('disconnected');
+      setModelsDetected(false);
+      return false;
+    }
   };
 
   const handleDisconnect = () => {
@@ -263,7 +282,44 @@ export default function App() {
 
   const handleSwitchAgent = () => {
     setShowAgentSelector(true);
+    openclaw.discoverLocalAgents()
+      .then((res) => {
+        if (Array.isArray(res?.agents)) setAvailableAgents(res.agents);
+        if (res?.models) {
+          setModelsDetected(true);
+          applyDetectedModels(res.models);
+        } else {
+          refreshDetectedModels();
+        }
+      })
+      .catch(() => {});
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    openclaw.discoverLocalAgents()
+      .then((res) => {
+        if (cancelled || !Array.isArray(res?.agents)) return;
+        const agents = res.agents;
+        setAvailableAgents(agents);
+        if (res?.models) {
+          setModelsDetected(true);
+          applyDetectedModels(res.models);
+        } else {
+          refreshDetectedModels();
+        }
+        if (urlParams.gatewayUrl) return;
+        const liveAgents = agents.filter((agent) => agent.status === 'running');
+        if (!urlParams.agents?.length && liveAgents.length === 1) {
+          const agent = liveAgents[0];
+          handleConnect(agent.gateway_url, agent.gateway_token, agent.env, { agents });
+        } else if (!urlParams.agents?.length && liveAgents.length > 1) {
+          setShowAgentSelector(true);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const handleProjectCreate = useCallback((name) => {
     const newProject = createProject(name);
@@ -478,7 +534,7 @@ export default function App() {
       case 'references':
         return { projects, onReferencesChange: handleReferencesChange, uiLanguage };
       case 'profile':
-        return { uiLanguage };
+        return { llm, uiLanguage };
       default:
         return {};
     }
@@ -518,7 +574,7 @@ export default function App() {
           onCloseMobile={() => setMobileSidebarOpen(false)}
           connectionStatus={connectionStatus}
           onOpenSettings={() => setShowSettings(true)}
-          agents={urlParams.agents}
+          agents={availableAgents}
           currentAgentEnv={agentEnv}
           onSwitchAgent={handleSwitchAgent}
           onDisconnect={handleDisconnect}
@@ -543,7 +599,7 @@ export default function App() {
 
       {showAgentSelector && (
         <AgentSelector
-          agents={urlParams.agents}
+          agents={availableAgents}
           currentEnv={agentEnv}
           isConnected={connectionStatus === 'connected'}
           onSelect={(agent) => {

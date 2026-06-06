@@ -160,7 +160,7 @@ export function buildBrandAssetManifest(project) {
   return {
     schemaVersion: BRAND_ASSET_MANIFEST_SCHEMA_VERSION,
     projectId: project?.id || null,
-    brandName: project?.brandName || project?.name || '',
+    brandName: project?.brandName || '',
     status: locked ? 'locked' : stale ? 'stale' : productionReady ? 'ready-to-lock' : 'draft',
     locked,
     stale,

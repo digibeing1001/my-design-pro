@@ -11,8 +11,7 @@ const ENV_META = {
 };
 
 export default function AgentSelector({ agents, onSelect, onClose, currentEnv, isConnected, onDisconnect, uiLanguage }) {
-  if (!agents || agents.length === 0) return null;
-
+  const agentList = Array.isArray(agents) ? agents : [];
   const isSwitchMode = !!currentEnv && currentEnv !== 'unknown';
   const copy = uiText('agentSelector', uiLanguage);
   const currentLabel = ENV_META[currentEnv]?.label || currentEnv;
@@ -45,8 +44,16 @@ export default function AgentSelector({ agents, onSelect, onClose, currentEnv, i
         </p>
 
         {/* Agent list */}
+        {agentList.length === 0 ? (
+          <div className="rounded-lg border border-gdpro-warning/20 bg-gdpro-warning/10 p-3 text-[12px] leading-relaxed text-gdpro-text-secondary">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-gdpro-warning mt-0.5 shrink-0" strokeWidth={2} />
+              <span>{copy.noAgents}</span>
+            </div>
+          </div>
+        ) : (
         <div className="space-y-2">
-          {agents.map((agent, idx) => {
+          {agentList.map((agent, idx) => {
             const meta = ENV_META[agent.env] || { label: agent.env, color: 'text-gdpro-text', bg: 'bg-gdpro-bg-hover' };
             const Icon = meta.Icon || Zap;
             const isRunning = agent.status === 'running';
@@ -105,6 +112,7 @@ export default function AgentSelector({ agents, onSelect, onClose, currentEnv, i
             );
           })}
         </div>
+        )}
 
         {/* Disconnect button in switch mode */}
         {isSwitchMode && isConnected && onDisconnect && (

@@ -47,6 +47,14 @@ const API = {
     return res.json().catch(() => null);
   },
 
+  async discoverLocalAgents() {
+    return this.consoleFetch('/local-agents');
+  },
+
+  async discoverLocalModels() {
+    return this.consoleFetch('/local-models');
+  },
+
   async healthCheck() {
     const data = await this.fetch('/health');
     // Verify it's a real creative service, not just any HTTP 200 service.

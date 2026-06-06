@@ -73,8 +73,8 @@ export function buildBrandConsistencyKit(project, options = {}) {
       id: 'brand-name',
       label: '品牌名称',
       labelEn: 'Name',
-      passed: Boolean(project?.brandName || project?.name),
-      detail: project?.brandName || project?.name || '先确认项目名称和品牌名称',
+      passed: Boolean(project?.brandName),
+      detail: project?.brandName || '先确认品牌名称',
       evidence: 'project.brandName',
     }),
     contractItem({
@@ -232,7 +232,7 @@ export function buildBrandConsistencyKit(project, options = {}) {
   return {
     schemaVersion: BRAND_CONSISTENCY_KIT_SCHEMA_VERSION,
     projectId: project?.id || null,
-    brandName: project?.brandName || project?.name || '',
+    brandName: project?.brandName || '',
     status,
     statusLabel: statusLabel(status),
     readiness,
