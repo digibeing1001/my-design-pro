@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Brain, Image as ImageIcon, ChevronDown, Check, Settings, Plus, Trash2, ExternalLink, KeyRound, PlugZap } from 'lucide-react';
+import { Brain, ChevronDown, Check, Settings, Plus, Trash2, ExternalLink, KeyRound, PlugZap } from 'lucide-react';
 import {
   getLanguageModels,
-  getImageModels,
   addCustomModel,
   removeCustomModel,
   getCustomModels,
@@ -223,7 +222,8 @@ function ModelDropdown({ label, selected, onSelect, icon: Icon, isDetected, onCo
 
 export default function ModelSelector({ llm, imageModel, onChangeLLM, onChangeImageModel, modelsDetected, uiLanguage }) {
   const [showConfig, setShowConfig] = useState(false);
-  const [configTab, setConfigTab] = useState('image');
+  const [configTab, setConfigTab] = useState('llm');
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const createEmptyModel = () => ({
     name: '',
     provider: '',
@@ -341,31 +341,10 @@ export default function ModelSelector({ llm, imageModel, onChangeLLM, onChangeIm
           icon={Brain}
           isDetected={modelsDetected}
           getModels={(d) => getLanguageModels(d)}
+          onConfigure={() => { setConfigTab('llm'); setShowAdvancedSettings(false); setShowConfig(true); }}
           copy={copy}
           language={uiLanguage}
         />
-        <div className="w-px h-3" style={{ background: 'rgba(24,35,48,0.14)' }} />
-        <ModelDropdown
-          label={copy.imageService}
-          selected={imageModel}
-          onSelect={onChangeImageModel}
-          icon={ImageIcon}
-          isDetected={modelsDetected}
-          getModels={(d) => getImageModels(d)}
-          onConfigure={() => { setConfigTab('image'); setShowConfig(true); }}
-          alwaysAvailable
-          copy={copy}
-          language={uiLanguage}
-        />
-        <button
-          type="button"
-          onClick={() => { setConfigTab('image'); setShowConfig(true); }}
-          className="hidden sm:inline-flex items-center justify-center w-7 h-7 rounded-lg border border-gdpro-border bg-gdpro-bg-elevated text-gdpro-text-muted hover:text-gdpro-text hover:border-gdpro-border-light focus:outline-none focus-visible:ring-2 focus-visible:ring-gdpro-accent"
-          title={copy.configureImageService}
-          aria-label={copy.configureImageService}
-        >
-          <Settings className="w-3.5 h-3.5" strokeWidth={2} />
-        </button>
       </div>
 
       {showConfig && (
@@ -381,12 +360,12 @@ export default function ModelSelector({ llm, imageModel, onChangeLLM, onChangeIm
 
             <div className="mac-segment mb-4">
               {[
-                { id: 'image', label: copy.tabs.image },
                 { id: 'llm', label: copy.tabs.llm },
+                { id: 'image', label: copy.tabs.image },
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setConfigTab(tab.id)}
+                  onClick={() => { setConfigTab(tab.id); setShowAdvancedSettings(false); }}
                   className={`mac-segment-btn ${configTab === tab.id ? 'mac-segment-btn-active' : ''}`}
                 >
                   {tab.label}
@@ -394,7 +373,18 @@ export default function ModelSelector({ llm, imageModel, onChangeLLM, onChangeIm
               ))}
             </div>
 
-            {configTab === 'image' && (
+            <div className="mb-4 rounded-lg gdpro-surface-tile p-3">
+              <p className="text-[12px] leading-relaxed text-gdpro-text-secondary">{copy.simpleSettingsNote}</p>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedSettings((value) => !value)}
+                className="mt-2 text-[11px] font-semibold text-gdpro-accent hover:text-gdpro-accent-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-gdpro-accent rounded"
+              >
+                {showAdvancedSettings ? copy.hideAdvanced : copy.showAdvanced}
+              </button>
+            </div>
+
+            {showAdvancedSettings && configTab === 'image' && (
               <div className="mb-4">
                 <div className="flex items-center justify-between gap-3 mb-2">
                   <div>
@@ -552,139 +542,143 @@ export default function ModelSelector({ llm, imageModel, onChangeLLM, onChangeIm
               </div>
             )}
 
-            <div className="mb-4">
-              <h3 className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider mb-1.5">{copy.customConnections}</h3>
-              {(customModels[configTab] || []).length === 0 ? (
-                <p className="text-[11px] text-gdpro-text-muted py-1">{copy.noCustom}</p>
-              ) : (
-                <div className="space-y-1">
-                  {(customModels[configTab] || []).map((m) => (
-                    <div key={m.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg gdpro-surface-tile">
-                      <span className="flex h-6 min-w-6 items-center justify-center rounded-md border border-gdpro-border bg-gdpro-bg-surface px-1 text-[8px] font-semibold text-gdpro-text-secondary">{m.icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-medium text-gdpro-text truncate">{m.name}</div>
-                        <div className="text-[10px] text-gdpro-text-muted truncate">
-                          {m.provider}{configTab === 'image' && m.model ? ` · ${m.model}` : ''}
+            {showAdvancedSettings && (
+              <>
+                <div className="mb-4">
+                  <h3 className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider mb-1.5">{copy.customConnections}</h3>
+                  {(customModels[configTab] || []).length === 0 ? (
+                    <p className="text-[11px] text-gdpro-text-muted py-1">{copy.noCustom}</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {(customModels[configTab] || []).map((m) => (
+                        <div key={m.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg gdpro-surface-tile">
+                          <span className="flex h-6 min-w-6 items-center justify-center rounded-md border border-gdpro-border bg-gdpro-bg-surface px-1 text-[8px] font-semibold text-gdpro-text-secondary">{m.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12px] font-medium text-gdpro-text truncate">{m.name}</div>
+                            <div className="text-[10px] text-gdpro-text-muted truncate">
+                              {m.provider}{configTab === 'image' && m.model ? ` · ${m.model}` : ''}
+                            </div>
+                          </div>
+                          {configTab === 'image' && (
+                            <span className={`rounded-md border px-1.5 py-[2px] text-[9px] shrink-0 ${
+                              isImageProviderConfigured(m.id)
+                                ? 'border-gdpro-success/20 bg-gdpro-success/10 text-gdpro-success'
+                                : 'border-gdpro-warning/20 bg-gdpro-warning/10 text-gdpro-warning'
+                            }`}>
+                              {isImageProviderConfigured(m.id) ? copy.ready : copy.incomplete}
+                            </span>
+                          )}
+                          {configTab === 'image' && (
+                            <button
+                              type="button"
+                              onClick={() => handleUseCustomImageConnection(m)}
+                              className={`px-2 py-1 rounded-md border text-[10px] font-semibold shrink-0 transition-colors ${
+                                imageModel === m.id
+                                  ? 'border-gdpro-accent/25 bg-gdpro-accent/10 text-gdpro-accent'
+                                  : 'border-gdpro-border bg-gdpro-bg-elevated text-gdpro-text-muted hover:text-gdpro-text'
+                              }`}
+                            >
+                              {imageModel === m.id ? copy.current : copy.use}
+                            </button>
+                          )}
+                          <button onClick={() => handleRemoveModel(configTab, m.id)}
+                            className="p-1 rounded-lg hover:bg-gdpro-danger/10 text-gdpro-text-muted hover:text-gdpro-danger transition-colors">
+                            <Trash2 className="w-3 h-3" strokeWidth={2} />
+                          </button>
                         </div>
-                      </div>
-                      {configTab === 'image' && (
-                        <span className={`rounded-md border px-1.5 py-[2px] text-[9px] shrink-0 ${
-                          isImageProviderConfigured(m.id)
-                            ? 'border-gdpro-success/20 bg-gdpro-success/10 text-gdpro-success'
-                            : 'border-gdpro-warning/20 bg-gdpro-warning/10 text-gdpro-warning'
-                        }`}>
-                          {isImageProviderConfigured(m.id) ? copy.ready : copy.incomplete}
-                        </span>
-                      )}
-                      {configTab === 'image' && (
-                        <button
-                          type="button"
-                          onClick={() => handleUseCustomImageConnection(m)}
-                          className={`px-2 py-1 rounded-md border text-[10px] font-semibold shrink-0 transition-colors ${
-                            imageModel === m.id
-                              ? 'border-gdpro-accent/25 bg-gdpro-accent/10 text-gdpro-accent'
-                              : 'border-gdpro-border bg-gdpro-bg-elevated text-gdpro-text-muted hover:text-gdpro-text'
-                          }`}
-                        >
-                          {imageModel === m.id ? copy.current : copy.use}
-                        </button>
-                      )}
-                      <button onClick={() => handleRemoveModel(configTab, m.id)}
-                        className="p-1 rounded-lg hover:bg-gdpro-danger/10 text-gdpro-text-muted hover:text-gdpro-danger transition-colors">
-                        <Trash2 className="w-3 h-3" strokeWidth={2} />
-                      </button>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div className="pt-3" style={{ borderTop: '1px solid rgba(24,35,48,0.12)' }}>
-              <h3 className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider mb-2">{copy.addCustom}</h3>
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="gdpro-label">{copy.connectionName}</label>
-                    <input className="gdpro-input text-[12px] py-[5px]" value={newModel.name}
-                      onChange={(e) => setNewModel((m) => ({ ...m, name: e.target.value }))}
-                      placeholder={copy.connectionNamePlaceholder} />
-                  </div>
-                  <div>
-                    <label className="gdpro-label">{copy.provider}</label>
-                    <input className="gdpro-input text-[12px] py-[5px]" value={newModel.provider}
-                      onChange={(e) => setNewModel((m) => ({ ...m, provider: e.target.value }))}
-                      placeholder={copy.providerPlaceholder} />
-                  </div>
-                </div>
-                <div>
-                  <label className="gdpro-label">{copy.description}</label>
-                  <input className="gdpro-input text-[12px] py-[5px]" value={newModel.desc}
-                    onChange={(e) => setNewModel((m) => ({ ...m, desc: e.target.value }))}
-                    placeholder={copy.descriptionPlaceholder} />
-                </div>
-                {newModel.type === 'image' && (
-                  <div className="rounded-lg border border-gdpro-border bg-gdpro-bg-elevated/70 p-2.5">
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <PlugZap className="w-3.5 h-3.5 text-gdpro-accent" strokeWidth={2} />
-                    <h4 className="text-[11px] font-semibold text-gdpro-text-secondary">{copy.imageInfo}</h4>
-                    </div>
+                <div className="pt-3" style={{ borderTop: '1px solid rgba(24,35,48,0.12)' }}>
+                  <h3 className="text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider mb-2">{copy.addCustom}</h3>
+                  <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="gdpro-label">{copy.modelName}</label>
-                        <input className="gdpro-input text-[12px] py-[5px]" value={newModel.model}
-                          onChange={(e) => setNewModel((m) => ({ ...m, model: e.target.value }))}
-                          placeholder="provider/model-id" />
+                        <label className="gdpro-label">{copy.connectionName}</label>
+                        <input className="gdpro-input text-[12px] py-[5px]" value={newModel.name}
+                          onChange={(e) => setNewModel((m) => ({ ...m, name: e.target.value }))}
+                          placeholder={copy.connectionNamePlaceholder} />
                       </div>
                       <div>
-                        <label className="gdpro-label">{copy.defaultSize}</label>
-                        <input className="gdpro-input text-[12px] py-[5px]" value={newModel.size}
-                          onChange={(e) => setNewModel((m) => ({ ...m, size: e.target.value }))}
-                          placeholder="1024x1024" />
+                        <label className="gdpro-label">{copy.provider}</label>
+                        <input className="gdpro-input text-[12px] py-[5px]" value={newModel.provider}
+                          onChange={(e) => setNewModel((m) => ({ ...m, provider: e.target.value }))}
+                          placeholder={copy.providerPlaceholder} />
                       </div>
                     </div>
-                    <div className="mt-2">
-                      <label className="gdpro-label">{copy.connectionAddress}</label>
-                      <input className="gdpro-input text-[12px] py-[5px]" value={newModel.baseUrl}
-                        onChange={(e) => setNewModel((m) => ({ ...m, baseUrl: e.target.value }))}
-                        placeholder="https://your-gateway.example/v1" />
+                    <div>
+                      <label className="gdpro-label">{copy.description}</label>
+                      <input className="gdpro-input text-[12px] py-[5px]" value={newModel.desc}
+                        onChange={(e) => setNewModel((m) => ({ ...m, desc: e.target.value }))}
+                        placeholder={copy.descriptionPlaceholder} />
                     </div>
-                    <div className="mt-2">
-                      <label className="gdpro-label">{copy.accessKey}</label>
-                      <input className="gdpro-input text-[12px] py-[5px] font-mono" type="password" value={newModel.apiKey}
-                        onChange={(e) => setNewModel((m) => ({ ...m, apiKey: e.target.value }))}
-                        placeholder={copy.accessKeyPlaceholder} />
-                      <p className="text-[10px] text-gdpro-text-muted mt-0.5">{copy.localOnly}</p>
+                    {newModel.type === 'image' && (
+                      <div className="rounded-lg border border-gdpro-border bg-gdpro-bg-elevated/70 p-2.5">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <PlugZap className="w-3.5 h-3.5 text-gdpro-accent" strokeWidth={2} />
+                          <h4 className="text-[11px] font-semibold text-gdpro-text-secondary">{copy.imageInfo}</h4>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="gdpro-label">{copy.modelName}</label>
+                            <input className="gdpro-input text-[12px] py-[5px]" value={newModel.model}
+                              onChange={(e) => setNewModel((m) => ({ ...m, model: e.target.value }))}
+                              placeholder="provider/model-id" />
+                          </div>
+                          <div>
+                            <label className="gdpro-label">{copy.defaultSize}</label>
+                            <input className="gdpro-input text-[12px] py-[5px]" value={newModel.size}
+                              onChange={(e) => setNewModel((m) => ({ ...m, size: e.target.value }))}
+                              placeholder="1024x1024" />
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          <label className="gdpro-label">{copy.connectionAddress}</label>
+                          <input className="gdpro-input text-[12px] py-[5px]" value={newModel.baseUrl}
+                            onChange={(e) => setNewModel((m) => ({ ...m, baseUrl: e.target.value }))}
+                            placeholder="https://your-gateway.example/v1" />
+                        </div>
+                        <div className="mt-2">
+                          <label className="gdpro-label">{copy.accessKey}</label>
+                          <input className="gdpro-input text-[12px] py-[5px] font-mono" type="password" value={newModel.apiKey}
+                            onChange={(e) => setNewModel((m) => ({ ...m, apiKey: e.target.value }))}
+                            placeholder={copy.accessKeyPlaceholder} />
+                          <p className="text-[10px] text-gdpro-text-muted mt-0.5">{copy.localOnly}</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="gdpro-label">{copy.icon}</label>
+                        <input className="gdpro-input text-[12px] py-[5px]" value={newModel.icon}
+                          onChange={(e) => setNewModel((m) => ({ ...m, icon: e.target.value.slice(0, 2) }))}
+                          placeholder="CU" maxLength={3} />
+                      </div>
+                      <div>
+                        <label className="gdpro-label">{copy.purpose}</label>
+                        <select className="gdpro-input text-[12px] py-[5px]"
+                          value={newModel.type}
+                          onChange={(e) => setNewModel((m) => ({ ...m, type: e.target.value }))}>
+                          <option value="image">{copy.imageService}</option>
+                          <option value="llm">{copy.planning}</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="gdpro-label">{copy.icon}</label>
-                    <input className="gdpro-input text-[12px] py-[5px]" value={newModel.icon}
-                      onChange={(e) => setNewModel((m) => ({ ...m, icon: e.target.value.slice(0, 2) }))}
-                      placeholder="CU" maxLength={3} />
-                  </div>
-                  <div>
-                    <label className="gdpro-label">{copy.purpose}</label>
-                    <select className="gdpro-input text-[12px] py-[5px]"
-                      value={newModel.type}
-                      onChange={(e) => setNewModel((m) => ({ ...m, type: e.target.value }))}>
-                      <option value="image">{copy.imageService}</option>
-                      <option value="llm">{copy.planning}</option>
-                    </select>
+
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={handleAddModel} disabled={!newModel.name.trim() || !newModel.provider.trim()}
+                      className="gdpro-button flex-1 disabled:opacity-40 text-[12px] flex items-center justify-center gap-1">
+                      <Plus className="w-3 h-3" strokeWidth={2.5} />
+                      {copy.addConnection}
+                    </button>
+                    <button onClick={() => setShowConfig(false)} className="gdpro-button-secondary flex-1 text-[12px]">{copy.close}</button>
                   </div>
                 </div>
-              </div>
-
-              <div className="flex gap-2 mt-3">
-                <button onClick={handleAddModel} disabled={!newModel.name.trim() || !newModel.provider.trim()}
-                  className="gdpro-button flex-1 disabled:opacity-40 text-[12px] flex items-center justify-center gap-1">
-                  <Plus className="w-3 h-3" strokeWidth={2.5} />
-                  {copy.addConnection}
-                </button>
-                <button onClick={() => setShowConfig(false)} className="gdpro-button-secondary flex-1 text-[12px]">{copy.close}</button>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -205,7 +206,7 @@ def get_parent_process_names():
             ],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=2,
         )
         names = result.stdout.strip().lower().split(",")
         return [n.strip() for n in names if n.strip()]
@@ -321,6 +322,91 @@ def public_agent_payload(agents):
     return payload
 
 
+def _read_yaml_file(path):
+    try:
+        import yaml
+    except Exception:
+        return None
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return None
+
+
+def _clean_model_id(value):
+    text = str(value or "").strip()
+    return text or None
+
+
+def _model_display_name(model_id):
+    text = _clean_model_id(model_id) or ""
+    return text.rsplit("/", 1)[-1] or text
+
+
+def _add_model_entry(target, seen_ids, *, model_id, name=None, provider=None, icon="AI", desc=None, source=None):
+    clean_id = _clean_model_id(model_id)
+    if not clean_id or clean_id in seen_ids:
+        return None
+    seen_ids.add(clean_id)
+    entry = {
+        "id": clean_id,
+        "name": _clean_model_id(name) or _model_display_name(clean_id),
+        "provider": _clean_model_id(provider) or "Agent",
+        "icon": icon,
+        "desc": _clean_model_id(desc) or "",
+    }
+    if source:
+        entry["source"] = source
+    target.append(entry)
+    return entry
+
+
+def _merge_model_sources(sources):
+    llm_models = []
+    image_models = []
+    seen_llm = set()
+    seen_image = set()
+    default_llm = None
+    default_image = None
+
+    for source in [item for item in sources if item]:
+        for model in source.get("llm", []) or []:
+            _add_model_entry(
+                llm_models,
+                seen_llm,
+                model_id=model.get("id"),
+                name=model.get("name"),
+                provider=model.get("provider"),
+                icon=model.get("icon") or "AI",
+                desc=model.get("desc"),
+                source=model.get("source"),
+            )
+        for model in source.get("image", []) or []:
+            _add_model_entry(
+                image_models,
+                seen_image,
+                model_id=model.get("id"),
+                name=model.get("name"),
+                provider=model.get("provider"),
+                icon=model.get("icon") or "IMG",
+                desc=model.get("desc"),
+                source=model.get("source"),
+            )
+        defaults = source.get("defaults", {}) or {}
+        if not default_llm and defaults.get("llm"):
+            default_llm = defaults.get("llm")
+        if not default_image and defaults.get("image"):
+            default_image = defaults.get("image")
+
+    if not llm_models and not image_models and not default_llm and not default_image:
+        return None
+    return {
+        "llm": llm_models,
+        "image": image_models,
+        "defaults": {"llm": default_llm, "image": default_image},
+    }
+
+
 def discover_all_agents():
     """
     Discover all configured and running Agent gateways.
@@ -353,12 +439,32 @@ def discover_all_agents():
             "preferred": bool(preferred),
         }
 
+    health_cache = {}
+
+    def local_port_is_listening(url):
+        try:
+            parsed = urllib.parse.urlparse(str(url))
+            host = parsed.hostname
+            port = parsed.port
+            if not host or not port:
+                return False
+            if host not in {"127.0.0.1", "localhost", "::1"}:
+                return False
+            connect_host = "127.0.0.1" if host == "localhost" else host
+            with socket.create_connection((connect_host, port), timeout=0.25):
+                return True
+        except Exception:
+            return False
+
     # Helper to check health — verify it's a real Agent Gateway
     def check_health(url, token=None):
+        cache_key = (str(url).rstrip("/"), token or "")
+        if cache_key in health_cache:
+            return health_cache[cache_key]
         headers = {"Accept": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        for timeout in (1.5, 5.0):
+        for timeout in (0.5,):
             try:
                 req = urllib.request.Request(f"{url}/health", method="GET", headers=headers)
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -374,11 +480,16 @@ def discover_all_agents():
                         or "service" in data
                         or "name" in data
                     )
+                    health_cache[cache_key] = ok
+                    return ok
             except Exception:
                 continue
+        health_cache[cache_key] = False
         return False
 
     def status_for(url, token=None):
+        if local_port_is_listening(url):
+            return "running"
         return "running" if check_health(url, token) else "configured"
 
     parents = get_parent_process_names()
@@ -514,7 +625,7 @@ def discover_all_agents():
     return agents
 
 
-def discover_models_from_config():
+def discover_openclaw_models():
     """
     Read actual model configurations from OpenClaw/WorkBuddy config.
     Returns {llm: [...], image: [...], defaults: {llm: str|None, image: str|None}}
@@ -554,19 +665,23 @@ def discover_models_from_config():
                     desc_parts.append("reasoning")
                 desc = " · ".join(desc_parts) if desc_parts else ""
 
-                model_entry = {
-                    "id": full_id,
-                    "name": name,
-                    "provider": provider_name,
-                    "icon": "🧠",
-                    "desc": desc,
-                }
-                llm_models.append(model_entry)
+                model_entry = _add_model_entry(
+                    llm_models,
+                    seen_ids,
+                    model_id=full_id,
+                    name=name,
+                    provider=provider_name,
+                    icon="AI",
+                    desc=desc,
+                    source="openclaw",
+                )
+                if not model_entry:
+                    continue
 
                 # Heuristic: check if model name/id suggests image generation
                 lower_name = (name + " " + model_id).lower()
                 if any(kw in lower_name for kw in IMAGE_KEYWORDS):
-                    image_models.append({**model_entry, "icon": "🎨"})
+                    image_models.append({**model_entry, "icon": "IMG"})
 
         # Determine defaults
         default_llm = primary
@@ -590,6 +705,7 @@ def discover_models_from_config():
                 "provider": provider_name,
                 "icon": "AI",
                 "desc": "Agent 默认文字模型",
+                "source": "openclaw",
             })
         default_image = None
         # Prefer an image-heuristic model as default image model
@@ -603,6 +719,125 @@ def discover_models_from_config():
         }
     except Exception:
         return None
+
+
+def discover_hermes_models():
+    """
+    Read Hermes model configuration from ~/.hermes/config.yaml.
+    The returned payload intentionally excludes API keys and other secrets.
+    """
+    home = Path.home()
+    cfg_path = home / ".hermes" / "config.yaml"
+    if not cfg_path.exists():
+        return None
+    cfg = _read_yaml_file(cfg_path)
+    if not isinstance(cfg, dict):
+        return None
+
+    model_cfg = cfg.get("model")
+    default_llm = None
+    default_provider = None
+    if isinstance(model_cfg, str):
+        default_llm = _clean_model_id(model_cfg)
+    elif isinstance(model_cfg, dict):
+        default_llm = _clean_model_id(model_cfg.get("default") or model_cfg.get("model"))
+        default_provider = _clean_model_id(model_cfg.get("provider"))
+    env_default_llm = _clean_model_id(os.getenv("HERMES_INFERENCE_MODEL") or os.getenv("HERMES_MODEL"))
+    if env_default_llm:
+        default_llm = env_default_llm
+
+    llm_models = []
+    seen_ids = set()
+
+    def add_hermes_model(model_id, *, name=None, provider=None, desc=None):
+        return _add_model_entry(
+            llm_models,
+            seen_ids,
+            model_id=model_id,
+            name=name,
+            provider=provider or default_provider or "Hermes",
+            icon="AI",
+            desc=desc,
+            source="hermes",
+        )
+
+    custom_providers = cfg.get("custom_providers")
+    if isinstance(custom_providers, list):
+        for provider_cfg in custom_providers:
+            if not isinstance(provider_cfg, dict):
+                continue
+            provider_name = (
+                _clean_model_id(provider_cfg.get("name"))
+                or _clean_model_id(provider_cfg.get("provider_key"))
+                or _clean_model_id(provider_cfg.get("provider"))
+                or "Hermes"
+            )
+            provider_default = _clean_model_id(
+                provider_cfg.get("model")
+                or provider_cfg.get("default_model")
+                or provider_cfg.get("default")
+            )
+            api_mode = _clean_model_id(provider_cfg.get("api_mode"))
+            desc_parts = ["Hermes"]
+            if api_mode:
+                desc_parts.append(api_mode.replace("_", " "))
+            desc = " · ".join(desc_parts)
+
+            raw_models = provider_cfg.get("models")
+            if isinstance(raw_models, dict):
+                for raw_id, meta in raw_models.items():
+                    model_id = _clean_model_id(raw_id)
+                    if not model_id:
+                        continue
+                    display_name = None
+                    if isinstance(meta, dict):
+                        display_name = _clean_model_id(meta.get("name"))
+                    add_hermes_model(model_id, name=display_name, provider=provider_name, desc=desc)
+            elif isinstance(raw_models, list):
+                for item in raw_models:
+                    if isinstance(item, dict):
+                        model_id = _clean_model_id(item.get("id") or item.get("model") or item.get("name"))
+                        display_name = _clean_model_id(item.get("name"))
+                    else:
+                        model_id = _clean_model_id(item)
+                        display_name = None
+                    if model_id:
+                        add_hermes_model(model_id, name=display_name, provider=provider_name, desc=desc)
+
+            if provider_default:
+                add_hermes_model(provider_default, provider=provider_name, desc=desc)
+
+    if default_llm:
+        matched = next((item["id"] for item in llm_models if item["id"] == default_llm), None)
+        if not matched:
+            add_hermes_model(
+                default_llm,
+                provider=default_provider or "Hermes",
+                desc="Hermes 默认文字模型",
+            )
+
+    if not llm_models and not default_llm:
+        return None
+    return {
+        "llm": llm_models,
+        "image": [],
+        "defaults": {"llm": default_llm, "image": None},
+    }
+
+
+def discover_models_from_config(preferred_env=None):
+    """
+    Read actual model configurations from the connected local partner.
+    Returns {llm: [...], image: [...], defaults: {llm: str|None, image: str|None}}
+    """
+    env = str(preferred_env or "").strip().lower()
+    hermes = discover_hermes_models()
+    openclaw_models = discover_openclaw_models()
+    if env == "hermes":
+        return _merge_model_sources([hermes, openclaw_models])
+    if env in {"openclaw", "workbuddy", "qclaw"}:
+        return _merge_model_sources([openclaw_models, hermes])
+    return _merge_model_sources([hermes, openclaw_models])
 
 
 def inject_agents_into_html(dist_dir, agents):
@@ -634,8 +869,10 @@ def inject_agents_into_html(dist_dir, agents):
         agents_json = json.dumps(public_agent_payload(agents))
         agents_injection = f'<script>window.__AGENTS__ = {agents_json};</script>\n'
 
-        # Inject actual models from OpenClaw config
-        models_data = discover_models_from_config()
+        preferred_env = agents[0].get("env") if agents else None
+
+        # Inject actual models from the preferred local partner config
+        models_data = discover_models_from_config(preferred_env)
         models_injection = ""
         if models_data:
             models_json = json.dumps(models_data)
@@ -765,7 +1002,8 @@ class ProxyHandler(SimpleHTTPRequestHandler):
     def _local_agents_list(self):
         try:
             agents = discover_all_agents()
-            models = discover_models_from_config()
+            preferred_env = agents[0].get("env") if agents else None
+            models = discover_models_from_config(preferred_env)
             self._send_json(200, {
                 "success": True,
                 "agents": public_agent_payload(agents),
@@ -780,7 +1018,10 @@ class ProxyHandler(SimpleHTTPRequestHandler):
 
     def _local_models_list(self):
         try:
-            models = discover_models_from_config()
+            parsed = urllib.parse.urlparse(self.path)
+            query = urllib.parse.parse_qs(parsed.query)
+            preferred_env = (query.get("env") or [None])[0]
+            models = discover_models_from_config(preferred_env)
             self._send_json(200, {
                 "success": True,
                 "models": models,

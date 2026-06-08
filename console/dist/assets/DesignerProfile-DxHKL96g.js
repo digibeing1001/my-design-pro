@@ -1,4 +1,4 @@
-import{c as i,r as o,l as O,j as e,a2 as B,L as F,X as L,C as R,T as G,o as H,e as U}from"./index-DXmWU9zH.js";import{l as P,p as V,g as X,q as Y,a as J,d as T}from"./designerPreferenceLearning-DXCnUInt.js";import{S as Q}from"./sparkles-kj4Y9tsg.js";import{P as Z}from"./palette-DFanrNbm.js";/**
+import{c as i,r as o,l as O,j as e,a2 as B,L as F,X as L,C as R,T as G,o as H,e as U}from"./index-D16vkqGE.js";import{l as P,p as V,g as X,q as Y,a as J,d as T}from"./designerPreferenceLearning-BWB4gS4y.js";import{S as Q}from"./sparkles-DWkUvUQC.js";import{P as Z}from"./palette-Fja0x4GL.js";/**
  * @license lucide-react v1.8.0 - ISC
  *
  * This source code is licensed under the ISC license.

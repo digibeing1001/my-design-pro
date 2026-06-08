@@ -51,8 +51,9 @@ const API = {
     return this.consoleFetch('/local-agents');
   },
 
-  async discoverLocalModels() {
-    return this.consoleFetch('/local-models');
+  async discoverLocalModels(env) {
+    const query = env ? `?env=${encodeURIComponent(env)}` : '';
+    return this.consoleFetch(`/local-models${query}`);
   },
 
   async healthCheck() {

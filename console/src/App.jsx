@@ -14,7 +14,7 @@ import {
   prepareDeliveryExportProject,
 } from './lib/exportGdpro';
 import { createProject, DEMO_PROJECTS } from './data/projects';
-import { getConfiguredModels, saveModelConfig, saveCustomModels, getCustomModels, addCustomModel, removeCustomModel, getDetectedDefaults, buildImageModelRuntimeConfig, setDetectedModels } from './data/modelConfig';
+import { getConfiguredModels, saveModelConfig, saveCustomModels, getCustomModels, addCustomModel, removeCustomModel, getDetectedDefaults, getLanguageModels, getImageModels, buildImageModelRuntimeConfig, setDetectedModels } from './data/modelConfig';
 import { loadUiLanguage, normalizeUiLanguage, saveUiLanguage, uiText } from './lib/uiLanguage';
 
 const DesignerAgent = lazy(() => import('./components/DesignerAgent'));
@@ -173,27 +173,39 @@ export default function App() {
     return 'unknown';
   });
 
-  // Apply detected models from Agent config
+  const selectDetectedDefault = (currentId, defaultId, models) => {
+    if (!defaultId) return null;
+    if (!currentId) return defaultId;
+    const currentExists = models.some((model) => model.id === currentId);
+    return currentExists ? null : defaultId;
+  };
+
+  // Apply detected models from Agent config without overwriting a valid user choice.
   const applyDetectedModels = (modelsData = null) => {
-    if (modelsData) setDetectedModels(modelsData);
+    const normalizedModels = modelsData ? setDetectedModels(modelsData) : null;
     const defaults = getDetectedDefaults();
     if (!defaults) return;
     const cfg = getConfiguredModels();
     const next = { ...cfg };
-    if (defaults.llm) {
-      setLlm(defaults.llm);
-      next.llm = defaults.llm;
+    const languageModels = getLanguageModels(true);
+    const imageModels = getImageModels(true);
+    const nextLlm = selectDetectedDefault(cfg.llm || llm, defaults.llm, languageModels);
+    const nextImageModel = selectDetectedDefault(cfg.imageModel || imageModel, defaults.image, imageModels);
+
+    if (nextLlm) {
+      setLlm(nextLlm);
+      next.llm = nextLlm;
     }
-    if (defaults.image) {
-      setImageModel(defaults.image);
-      next.imageModel = defaults.image;
+    if (nextImageModel) {
+      setImageModel(nextImageModel);
+      next.imageModel = nextImageModel;
     }
-    saveModelConfig(next);
+    if (nextLlm || nextImageModel || normalizedModels) saveModelConfig(next);
   };
 
-  const refreshDetectedModels = useCallback(async () => {
+  const refreshDetectedModels = useCallback(async (envName = null) => {
     try {
-      const res = await openclaw.discoverLocalModels();
+      const res = await openclaw.discoverLocalModels(envName && envName !== 'unknown' ? envName : null);
       const modelsData = res?.models || res;
       if (modelsData?.defaults || modelsData?.llm?.length || modelsData?.image?.length) {
         setModelsDetected(true);
@@ -215,7 +227,7 @@ export default function App() {
         .then(() => {
           setConnectionStatus('connected');
           setModelsDetected(true);
-          refreshDetectedModels();
+          refreshDetectedModels(urlParams.env || agentEnv);
           // Pull .gdpro/ data from workspace on connect
           pullFromGateway().then((res) => {
             if (res.success && res.pulled?.length) {
@@ -236,7 +248,7 @@ export default function App() {
         .then(() => {
           setConnectionStatus('connected');
           setModelsDetected(true);
-          refreshDetectedModels();
+          refreshDetectedModels(agent.env);
           pullFromGateway().then((res) => {
             if (res.success && res.pulled?.length) {
               const refreshed = loadFromLocal('projects', DEMO_PROJECTS);
@@ -259,7 +271,7 @@ export default function App() {
       await openclaw.healthCheck();
       setConnectionStatus('connected');
       setModelsDetected(true);
-      await refreshDetectedModels();
+      await refreshDetectedModels(envName);
       const res = await pullFromGateway();
       if (res.success && res.pulled?.length) {
         const refreshed = loadFromLocal('projects', DEMO_PROJECTS);
@@ -289,7 +301,7 @@ export default function App() {
           setModelsDetected(true);
           applyDetectedModels(res.models);
         } else {
-          refreshDetectedModels();
+          refreshDetectedModels(agentEnv);
         }
       })
       .catch(() => {});
@@ -306,7 +318,10 @@ export default function App() {
           setModelsDetected(true);
           applyDetectedModels(res.models);
         } else {
-          refreshDetectedModels();
+          const preferredEnv = agents.find((agent) => agent.preferred)?.env
+            || agents.find((agent) => agent.status === 'running')?.env
+            || agentEnv;
+          refreshDetectedModels(preferredEnv);
         }
         if (urlParams.gatewayUrl) return;
         const liveAgents = agents.filter((agent) => agent.status === 'running');
