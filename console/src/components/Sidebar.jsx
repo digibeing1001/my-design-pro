@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageSquare, Workflow, Image, BookOpen, User, ChevronLeft, FolderOpen, Plus, Check, X, Settings, Link, Link2, Unlink, Loader2 } from 'lucide-react';
+import { MessageSquare, Workflow, Image, BookOpen, User, ChevronLeft, Plus, Check, X, Settings, Link, Link2, Unlink, Loader2, Trash2 } from 'lucide-react';
 import { uiText } from '../lib/uiLanguage';
 
 const NAV_ITEMS = [
@@ -17,7 +17,7 @@ const STATUS_CONFIG = {
   unknown: { dot: 'bg-gdpro-text-muted', icon: Unlink },
 };
 
-export default function Sidebar({ activeView, onChange, collapsed, onToggle, projects, currentProjectId, onProjectSwitch, onProjectCreate, mobileOpen, onCloseMobile, connectionStatus, onOpenSettings, agents, currentAgentEnv, onSwitchAgent, onDisconnect, uiLanguage }) {
+export default function Sidebar({ activeView, onChange, collapsed, onToggle, projects, currentProjectId, onProjectSwitch, onProjectCreate, onProjectDelete, mobileOpen, onCloseMobile, connectionStatus, onOpenSettings, agents, currentAgentEnv, onSwitchAgent, onDisconnect, uiLanguage }) {
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const copy = uiText('sidebar', uiLanguage);
@@ -28,6 +28,12 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
     onProjectCreate?.(name);
     setShowNewProject(false);
     setNewProjectName('');
+  };
+
+  const handleDelete = (project) => {
+    const name = project?.name || project?.brandName || 'Untitled project';
+    if (!window.confirm(copy.deleteProjectConfirm?.(name) || `Delete "${name}"?`)) return;
+    onProjectDelete?.(project.id);
   };
 
   const status = STATUS_CONFIG[connectionStatus] || STATUS_CONFIG.unknown;
@@ -156,10 +162,9 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
             {projects.map((p) => {
               const isActive = currentProjectId === p.id;
               return (
-                <button
+                <div
                   key={p.id}
-                  onClick={() => onProjectSwitch(p.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-[7px] rounded-lg text-left border transition-colors duration-150 ${
+                  className={`group w-full flex items-center gap-1 rounded-lg border transition-colors duration-150 ${
                     isActive
                       ? 'text-gdpro-accent'
                       : 'border-transparent text-gdpro-text-secondary hover:text-gdpro-text hover:bg-gdpro-bg-hover hover:border-gdpro-border'
@@ -171,22 +176,37 @@ export default function Sidebar({ activeView, onChange, collapsed, onToggle, pro
                   } : {}}
                   title={p.name || p.brandName || 'Untitled project'}
                 >
-                  <div className={`w-[18px] h-[18px] rounded-[5px] flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                    isActive ? 'bg-gdpro-accent/15 text-gdpro-accent' : 'bg-gdpro-bg-surface text-gdpro-text-muted'
-                  }`}>
-                    {String(p.name || p.brandName || 'P').charAt(0)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className={`text-[12px] font-medium truncate ${isActive ? 'text-gdpro-accent' : ''}`}>
-                      {p.name || p.brandName || 'Untitled project'}
+                  <button
+                    type="button"
+                    onClick={() => onProjectSwitch(p.id)}
+                    className="min-w-0 flex flex-1 items-center gap-2 px-2 py-[7px] text-left"
+                  >
+                    <div className={`w-[18px] h-[18px] rounded-[5px] flex items-center justify-center text-[9px] font-bold shrink-0 ${
+                      isActive ? 'bg-gdpro-accent/15 text-gdpro-accent' : 'bg-gdpro-bg-surface text-gdpro-text-muted'
+                    }`}>
+                      {String(p.name || p.brandName || 'P').charAt(0)}
                     </div>
-                  </div>
-                  <span className={`text-[9px] px-1.5 py-[1px] rounded-md shrink-0 font-medium ${
-                    isActive ? 'bg-gdpro-accent/15 text-gdpro-accent' : 'bg-gdpro-bg-surface text-gdpro-text-muted'
-                  }`}>
-                    P{p.currentPhase}
-                  </span>
-                </button>
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-[12px] font-medium truncate ${isActive ? 'text-gdpro-accent' : ''}`}>
+                        {p.name || p.brandName || 'Untitled project'}
+                      </div>
+                    </div>
+                    <span className={`text-[9px] px-1.5 py-[1px] rounded-md shrink-0 font-medium ${
+                      isActive ? 'bg-gdpro-accent/15 text-gdpro-accent' : 'bg-gdpro-bg-surface text-gdpro-text-muted'
+                    }`}>
+                      P{p.currentPhase}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(p)}
+                    className="mr-1 rounded-md p-1 text-gdpro-text-muted opacity-70 hover:bg-gdpro-danger/10 hover:text-gdpro-danger focus:opacity-100 group-hover:opacity-100"
+                    title={copy.deleteProject}
+                    aria-label={copy.deleteProject}
+                  >
+                    <Trash2 className="w-3 h-3" strokeWidth={2} />
+                  </button>
+                </div>
               );
             })}
           </div>

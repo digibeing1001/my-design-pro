@@ -928,6 +928,8 @@ class ProxyHandler(SimpleHTTPRequestHandler):
             self._local_handoff_status()
         elif parsed.path == '/local-gdpro/sync':
             self._local_gdpro_sync()
+        elif parsed.path == '/local-gdpro/delete':
+            self._local_gdpro_delete()
         elif parsed.path == '/local-codex/chat':
             self._local_codex_chat()
         elif parsed.path == '/local-codex/exec':
@@ -1078,6 +1080,38 @@ class ProxyHandler(SimpleHTTPRequestHandler):
             "success": True,
             "written": written,
             "rejected": rejected,
+        })
+
+    def _local_gdpro_delete(self):
+        try:
+            body = self._read_json_body()
+        except Exception as exc:
+            self._send_json(400, {"success": False, "error": f"Invalid JSON: {exc}"})
+            return
+
+        rel_path = body.get("path") if isinstance(body, dict) else None
+        target = self._safe_gdpro_path(rel_path)
+        if target is None:
+            self._send_json(400, {"success": False, "error": "Invalid .gdpro path"})
+            return
+        projects_root = (REPO_ROOT / ".gdpro" / "projects").resolve()
+        try:
+            target.relative_to(projects_root)
+        except ValueError:
+            self._send_json(400, {"success": False, "error": "Delete is limited to .gdpro/projects"})
+            return
+        if target.suffix.lower() != ".json":
+            self._send_json(400, {"success": False, "error": "Delete is limited to project JSON files"})
+            return
+        if target.exists() and target.is_file():
+            target.unlink()
+            deleted = True
+        else:
+            deleted = False
+        self._send_json(200, {
+            "success": True,
+            "deleted": deleted,
+            "path": str(rel_path).replace("\\", "/"),
         })
 
     def _local_codex_health(self):

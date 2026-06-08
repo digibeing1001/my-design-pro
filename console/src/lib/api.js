@@ -159,6 +159,13 @@ const API = {
     }
   },
 
+  async deleteLocalGdproPath(path) {
+    return this.consoleFetch('/local-gdpro/delete', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    });
+  },
+
   async savePartnerHandoffTask(task) {
     return this.consoleFetch('/local-handoff/save', {
       method: 'POST',

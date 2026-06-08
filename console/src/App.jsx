@@ -350,6 +350,23 @@ export default function App() {
     saveToLocal('current_project', id);
   }, []);
 
+  const handleProjectDelete = useCallback((id) => {
+    if (!id) return;
+    setProjects((prev) => {
+      if (!prev.some((project) => project.id === id)) return prev;
+      const updated = prev.filter((project) => project.id !== id);
+      saveProjectsToLocalAndSync(updated);
+      setCurrentProjectId((current) => {
+        if (current !== id) return current;
+        const nextId = updated[0]?.id || null;
+        saveToLocal('current_project', nextId);
+        return nextId;
+      });
+      openclaw.deleteLocalGdproPath?.(`.gdpro/projects/${id}.json`).catch(() => {});
+      return updated;
+    });
+  }, []);
+
   const handleAssetsChange = useCallback((projectId, newAssets) => {
     setProjects((prev) => {
       const updated = prev.map((p) => p.id === projectId ? { ...p, assets: newAssets, updatedAt: Date.now() } : p);
@@ -518,6 +535,7 @@ export default function App() {
           projects,
           onProjectSwitch: handleProjectSwitch,
           onProjectCreate: handleProjectCreate,
+          onProjectDelete: handleProjectDelete,
           onAssetAdopted: handleAssetAdopted,
           onAssetRejected: handleAssetRejected,
           onAssetsChange: handleAssetsChange,
@@ -537,6 +555,7 @@ export default function App() {
           projects,
           onProjectSwitch: handleProjectSwitch,
           onProjectCreate: handleProjectCreate,
+          onProjectDelete: handleProjectDelete,
           onProjectUpdate: handleProjectUpdate,
           onAskAssistant: handleAskAssistantFromWorkflow,
           llm,
@@ -563,7 +582,11 @@ export default function App() {
         onExport={() => exportGdproProject(currentProject)}
         onExportDelivery={handleExportDelivery}
         onToggleMobileSidebar={() => setMobileSidebarOpen((v) => !v)}
+        projects={projects}
         currentProject={currentProject}
+        onProjectSwitch={handleProjectSwitch}
+        onProjectCreate={handleProjectCreate}
+        onProjectDelete={handleProjectDelete}
         llm={llm}
         imageModel={imageModel}
         onChangeLLM={handleChangeLLM}
@@ -585,6 +608,7 @@ export default function App() {
           currentProjectId={currentProjectId}
           onProjectSwitch={handleProjectSwitch}
           onProjectCreate={handleProjectCreate}
+          onProjectDelete={handleProjectDelete}
           mobileOpen={mobileSidebarOpen}
           onCloseMobile={() => setMobileSidebarOpen(false)}
           connectionStatus={connectionStatus}

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Compass, Paperclip, Send, Plus, Check, X, PenLine, Loader2, FolderOpen, FolderPlus, Wand2 } from 'lucide-react';
+import { Compass, Paperclip, Send, Plus, Check, X, PenLine, Loader2, FolderOpen, FolderPlus, Wand2, Trash2 } from 'lucide-react';
 import MarkdownRender from './MarkdownRender';
 import AssetMentionDropdown from './AssetMentionDropdown';
 import StructuredOutputRenderer from './StructuredOutputRenderer';
@@ -78,7 +78,7 @@ function AssetCard({ asset, onAdopt, onReject }) {
   );
 }
 
-function ProjectSelector({ projects, currentProjectId, onSwitch, onCreate }) {
+function ProjectSelector({ projects, currentProjectId, onSwitch, onCreate, onDelete }) {
   const [open, setOpen] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState('');
@@ -91,6 +91,13 @@ function ProjectSelector({ projects, currentProjectId, onSwitch, onCreate }) {
   }, []);
 
   const current = projects.find((p) => p.id === currentProjectId);
+
+  const handleDelete = (event, project) => {
+    event.stopPropagation();
+    const name = project?.name || project?.brandName || 'Untitled project';
+    if (!window.confirm(`删除「${name}」？项目记录会从工作台移除。`)) return;
+    onDelete?.(project.id);
+  };
 
   return (
     <div className="relative" ref={ref}>
@@ -113,25 +120,51 @@ function ProjectSelector({ projects, currentProjectId, onSwitch, onCreate }) {
         <div className="mac-menu left-0 top-full mt-1 w-56">
           <div className="px-2.5 py-1.5 text-[10px] font-semibold text-gdpro-text-muted uppercase tracking-wider">切换项目</div>
 
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => { onSwitch(p.id); setOpen(false); }}
-              className={`mac-menu-item ${currentProjectId === p.id ? 'bg-gdpro-info text-white' : ''}`}
-            >
-              <div className={`w-5 h-5 rounded-[4px] flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                currentProjectId === p.id ? 'bg-white/20 text-white' : 'bg-gdpro-bg-hover text-gdpro-text-muted'
-              }`}>
-                {String(p.name || p.brandName || 'P').charAt(0)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className={`text-[12px] font-medium truncate ${currentProjectId === p.id ? 'text-white' : 'text-gdpro-text'}`}>
-                  {p.name || p.brandName || 'Untitled project'}
+          {projects.length === 0 ? (
+            <div className="px-3 py-3 text-[11px] text-gdpro-text-muted">暂无项目</div>
+          ) : (
+            projects.map((p) => {
+              const active = currentProjectId === p.id;
+              const name = p.name || p.brandName || 'Untitled project';
+              return (
+                <div
+                  key={p.id}
+                  className={`mac-menu-item group ${active ? 'bg-gdpro-info text-white' : ''}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => { onSwitch(p.id); setOpen(false); }}
+                    className="min-w-0 flex flex-1 items-center gap-2 text-left"
+                  >
+                    <div className={`w-5 h-5 rounded-[4px] flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                      active ? 'bg-white/20 text-white' : 'bg-gdpro-bg-hover text-gdpro-text-muted'
+                    }`}>
+                      {String(name).charAt(0)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-[12px] font-medium truncate ${active ? 'text-white' : 'text-gdpro-text'}`}>
+                        {name}
+                      </div>
+                    </div>
+                    {active && <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={2.5} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => handleDelete(event, p)}
+                    className={`ml-1 rounded-md p-1 opacity-75 focus:opacity-100 group-hover:opacity-100 ${
+                      active
+                        ? 'text-white/80 hover:bg-white/15 hover:text-white'
+                        : 'text-gdpro-text-muted hover:bg-gdpro-danger/10 hover:text-gdpro-danger'
+                    }`}
+                    title="删除项目"
+                    aria-label="删除项目"
+                  >
+                    <Trash2 className="w-3 h-3" strokeWidth={2} />
+                  </button>
                 </div>
-              </div>
-              {currentProjectId === p.id && <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={2.5} />}
-            </button>
-          ))}
+              );
+            })
+          )}
 
           <div className="mac-divider" />
 
@@ -252,7 +285,7 @@ function imageModelRouteTone(config) {
   return 'border-gdpro-border bg-gdpro-bg-surface text-gdpro-text-secondary';
 }
 
-export default function DesignerAgent({ project, projects, onProjectSwitch, onProjectCreate, onAssetAdopted, onAssetRejected, onAssetsChange, onProjectUpdate, llm, imageModel, references, assets, queuedDesignRequest, onQueuedDesignRequestConsumed, uiLanguage }) {
+export default function DesignerAgent({ project, projects, onProjectSwitch, onProjectCreate, onProjectDelete, onAssetAdopted, onAssetRejected, onAssetsChange, onProjectUpdate, llm, imageModel, references, assets, queuedDesignRequest, onQueuedDesignRequestConsumed, uiLanguage }) {
   const [messages, setMessages] = useState(() => loadFromLocal(`chat_${project?.id}`, []));
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -551,6 +584,7 @@ export default function DesignerAgent({ project, projects, onProjectSwitch, onPr
           currentProjectId={project?.id}
           onSwitch={onProjectSwitch}
           onCreate={onProjectCreate}
+          onDelete={onProjectDelete}
         />
         {project && (
           <div className="flex items-center gap-2 min-w-max">
